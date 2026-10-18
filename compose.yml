@@ -1,0 +1,44 @@
+services:
+  bot:
+    image: "docker.io/local/tgdoctor:0.1.0"
+    platform: "linux/amd64"
+    build:
+      context: "."
+      platforms: ["linux/amd64"]
+    command: ["run"]
+    user: "1000:1000"
+    read_only: true
+    cap_drop: ["ALL"]
+    cap_add: []
+    security_opt: ["no-new-privileges:true"]
+    restart: "unless-stopped"
+    stop_grace_period: "15m"
+    environment:
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN:?Set TELEGRAM_BOT_TOKEN in .env}"
+      IMPORT_INTERVAL_HOURS: "${IMPORT_INTERVAL_HOURS:-24}"
+      STALE_AFTER_HOURS: "${STALE_AFTER_HOURS:-72}"
+      ALLOWED_USER_IDS: "${ALLOWED_USER_IDS:-}"
+      ENVIRONMENT: "${ENVIRONMENT:-production}"
+    volumes:
+      - type: "bind"
+        source: "./bot/data"
+        target: "/data"
+        read_only: false
+        bind:
+          create_host_path: false
+      - "./bot/config:/config:ro"
+    tmpfs:
+      - "/tmp:rw,noexec,nosuid,nodev,mode=1777"
+    ports:
+      - "127.0.0.1:3000:3000/tcp"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "/app/.venv/bin/tgdoctor", "healthcheck"]
+      interval: "30s"
+      timeout: "10s"
+      retries: 3
+      start_period: "20s"

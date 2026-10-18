@@ -1,0 +1,79 @@
+name: Validate and build
+
+on:
+  pull_request:
+  push:
+    branches: ["main"]
+    tags: ["v*"]
+  schedule:
+    - cron: "0 0 * * 1,4"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "validate-${{ github.ref }}"
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          version-file: "pyproject.toml"
+          enable-cache: true
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run ty check
+      - run: uv run pytest
+      - run: uv tree --locked --outdated
+
+  image:
+    needs: validate
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: docker/setup-buildx-action@v4.4.1
+      - uses: docker/build-push-action@v7.4.0
+        with:
+          context: "."
+          platforms: "linux/amd64"
+          load: true
+          pull: true
+          no-cache: ${{ github.event_name == 'schedule' }}
+          tags: "docker.io/local/tgdoctor:ci"
+      - uses: ./.github/actions/validate-image
+        with:
+          image: "docker.io/local/tgdoctor:ci"
+      - uses: docker/login-action@v4.6.0
+        if: github.event_name != 'pull_request'
+        with:
+          registry: "ghcr.io"
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v6.2.0
+        id: meta
+        if: github.event_name != 'pull_request'
+        with:
+          images: "ghcr.io/${{ github.repository }}"
+          tags: |
+            type=semver,pattern={{version}}
+            type=sha,format=long
+            type=raw,value=edge,enable={{is_default_branch}}
+      - uses: docker/build-push-action@v7.4.0
+        if: github.event_name != 'pull_request'
+        with:
+          context: "."
+          platforms: "linux/amd64"
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

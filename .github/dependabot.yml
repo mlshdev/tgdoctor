@@ -1,0 +1,14 @@
+version: 2
+updates:
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule: {interval: "cron", cronjob: "0 0 * * 1,4", timezone: "UTC"}
+    groups: {python: {patterns: ["*"]}}
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule: {interval: "cron", cronjob: "0 0 * * 1,4", timezone: "UTC"}
+    groups: {images: {patterns: ["*"]}}
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule: {interval: "cron", cronjob: "0 0 * * 1,4", timezone: "UTC"}
+    groups: {actions: {patterns: ["*"]}}

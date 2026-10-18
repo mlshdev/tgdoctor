@@ -1,0 +1,52 @@
+name: Update build tools
+
+on:
+  schedule:
+    - cron: "0 0 * * 1,4"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          version-file: "pyproject.toml"
+      - run: uv run tools/update_tools.py
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          version-file: "pyproject.toml"
+      - run: uv lock --upgrade
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run ty check
+      - run: uv run pytest
+      - name: Validate image and Compose
+        run: |
+          docker build --pull --platform linux/amd64 --tag docker.io/local/tgdoctor:update .
+          TELEGRAM_BOT_TOKEN=validation-only docker compose -p dev-tgdoctor-ci config --quiet
+      - uses: ./.github/actions/validate-image
+        with:
+          image: "docker.io/local/tgdoctor:update"
+      - name: Propose update after validation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then exit 0; fi
+          if gh pr list --state open --json title --jq '[.[] | select(.title == "deps: update build tools")] | length' | rg -q '^[1-9]'; then exit 0; fi
+          git switch -c "automation/build-tools-${{ github.run_id }}"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add pyproject.toml uv.lock Dockerfile
+          git commit -m 'deps: update build tools and transitive dependencies'
+          git push origin "automation/build-tools-${{ github.run_id }}"
+          gh pr create --head "automation/build-tools-${{ github.run_id }}" --title 'deps: update build tools' \
+            --body 'Scheduled stable build-tool and transitive updates. Ruff, ty, pytest, Docker build, read-only container smoke test, dive and Compose validation completed before opening this PR. Review and merge manually; GITHUB_TOKEN-created PRs do not automatically trigger additional workflows.'

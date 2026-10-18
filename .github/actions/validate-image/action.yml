@@ -1,0 +1,44 @@
+name: Validate image
+description: Non-root read-only smoke test and dive layer analysis on native Linux amd64
+inputs:
+  image:
+    description: Local image to validate
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Smoke-test non-root read-only container
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+      run: |
+        set -euo pipefail
+        docker run --detach --name tgdoctor-smoke --platform linux/amd64 \
+          --user 1000:1000 --read-only --cap-drop ALL \
+          --security-opt no-new-privileges:true \
+          --tmpfs /data:uid=1000,gid=1000,mode=0700 \
+          --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777 \
+          --publish 127.0.0.1:3000:3000/tcp \
+          --log-driver json-file --log-opt max-size=10m \
+          "$IMAGE" serve
+        curl --retry 20 --retry-delay 1 --retry-connrefused --fail http://127.0.0.1:3000/health/live
+        curl --fail http://127.0.0.1:3000/api/v1/status
+        docker exec tgdoctor-smoke tgdoctor healthcheck
+        docker exec tgdoctor-smoke tgdoctor backup --to /data/backup.sqlite3
+    - name: Inspect image layers with dive
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        IMAGE: ${{ inputs.image }}
+      run: |
+        set -euo pipefail
+        gh release download --repo wagoodman/dive --pattern '*_linux_amd64.tar.gz' --dir /var/tmp/dive
+        tar -xzf /var/tmp/dive/dive_*_linux_amd64.tar.gz -C /var/tmp/dive dive
+        /var/tmp/dive/dive --version
+        /var/tmp/dive/dive --ci --ci-config .dive-ci "$IMAGE"
+    - name: Container diagnostics and cleanup
+      if: always()
+      shell: bash
+      run: |
+        docker logs tgdoctor-smoke
+        docker rm --force tgdoctor-smoke
