@@ -21,7 +21,7 @@ runs:
           --publish 127.0.0.1:3000:3000/tcp \
           --log-driver json-file --log-opt max-size=10m \
           "$IMAGE" serve
-        curl --retry 20 --retry-delay 1 --retry-connrefused --fail http://127.0.0.1:3000/health/live
+        curl --retry 20 --retry-delay 1 --retry-all-errors --fail http://127.0.0.1:3000/health/live
         curl --fail http://127.0.0.1:3000/api/v1/status
         docker exec tgdoctor-smoke tgdoctor healthcheck
         docker exec tgdoctor-smoke tgdoctor backup --to /data/backup.sqlite3
