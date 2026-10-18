@@ -21,6 +21,16 @@ from tgdoctor.sources import SourceError
 LOGGER = logging.getLogger(__name__)
 
 
+def require_run_settings(settings: Settings) -> None:
+    if not settings.token or settings.token.startswith("replace-"):
+        raise ValueError("Ustaw TELEGRAM_BOT_TOKEN otrzymany od @BotFather")
+    if not settings.allowed_user_ids:
+        raise ValueError(
+            "Ustaw ALLOWED_USER_IDS — przecinkową listę numerycznych identyfikatorów "
+            "Telegram; bot odpowiada wyłącznie wymienionym użytkownikom"
+        )
+
+
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(prog="tgdoctor")
     commands = root.add_subparsers(dest="command", required=True)
@@ -66,8 +76,7 @@ def main() -> None:
         elif args.command == "serve":
             serve(catalog, settings)
         elif args.command == "run":
-            if not settings.token or settings.token.startswith("replace-"):
-                raise ValueError("Ustaw TELEGRAM_BOT_TOKEN otrzymany od @BotFather")
+            require_run_settings(settings)
             with exclusive(settings.data_dir / "bot.lock"):
                 server, thread = start_server(settings.http_host, settings.http_port, catalog)
                 try:

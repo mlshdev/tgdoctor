@@ -178,8 +178,12 @@ class Bot:
         user = update.effective_user
         if not user or not update.effective_chat or update.effective_chat.type != "private":
             return None
-        if self.settings.allowed_user_ids and user.id not in self.settings.allowed_user_ids:
-            await self.send(update, "Ten bot jest prywatny. Brak uprawnień.")
+        if user.id not in self.settings.allowed_user_ids:
+            await self.send(
+                update,
+                f"Ten bot jest prywatny. Brak uprawnień. Twój identyfikator: {user.id} — "
+                "może go dodać operator do ALLOWED_USER_IDS.",
+            )
             return None
         current = monotonic()
         while self.sessions:
@@ -729,11 +733,15 @@ class Bot:
 
     async def errors(self, update: object, context: BotContext) -> None:
         LOGGER.error("telegram_handler_failed", extra={"code": type(context.error).__name__})
-        if isinstance(update, Update):
-            try:
-                await self.send(update, "Wystąpił błąd. Spróbuj ponownie lub użyj /start.")
-            except TelegramError:
-                LOGGER.warning("telegram_error_reply_failed")
+        if not isinstance(update, Update):
+            return
+        user = update.effective_user
+        if user is not None and user.id not in self.settings.allowed_user_ids:
+            return
+        try:
+            await self.send(update, "Wystąpił błąd. Spróbuj ponownie lub użyj /start.")
+        except TelegramError:
+            LOGGER.warning("telegram_error_reply_failed")
 
     async def refresh(self) -> None:
         while not self.stop_import.is_set():

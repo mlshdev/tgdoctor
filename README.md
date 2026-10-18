@@ -65,8 +65,12 @@ potwierdź telefonicznie lub w aptece. To nie jest porada medyczna.
 
 1. W Telegramie utwórz bota przez **@BotFather** (`/newbot`). Wyłącz możliwość
    dodawania do grup (`/setjoingroups`); aplikacja i tak obsługuje tylko prywatne czaty.
-2. Skopiuj `.env.example` do `.env`, ustaw `TELEGRAM_BOT_TOKEN`.
-   Nie publikuj tokenu ani nie wklejaj go do czatu z asystentem.
+2. Skopiuj `.env.example` do `.env`, ustaw `TELEGRAM_BOT_TOKEN`
+   **oraz `ALLOWED_USER_IDS`** — bot odpowiada **wyłącznie** wymienionym tam
+   użytkownikom i odmawia startu bez tej listy. Swój numeryczny identyfikator
+   Telegrama sprawdzisz przez @userinfobot albo w komunikacie odmowy bota
+   (bot podaje go w odpowiedzi). Nie publikuj tokenu ani nie wklejaj go
+   do czatu z asystentem.
 3. Przygotuj uprawnienia katalogu danych i uruchom kontener:
 
 ```sh
@@ -160,9 +164,9 @@ jest automatyczną weryfikacją. Stare dane są oznaczane jako nieaktualne.
 | Zmienna | Domyślnie | Znaczenie |
 |---|---|---|
 | `TELEGRAM_BOT_TOKEN` | wymagana | Sekret od BotFather |
+| `ALLOWED_USER_IDS` | wymagana | Lista numerycznych ID Telegram oddzielona przecinkami; bot odpowiada **wyłącznie** wymienionym użytkownikom, pusta lista odmawia wszystkim i blokuje start |
 | `IMPORT_INTERVAL_HOURS` | `24` | Interwał importu, od 1 do 168 h |
 | `STALE_AFTER_HOURS` | `72` | Próg nieaktualności kontroli i daty danych, 24–720 h |
-| `ALLOWED_USER_IDS` | puste | Lista numerycznych ID oddzielona przecinkami; puste = publiczny bot |
 | `ENVIRONMENT` | `production` w kontenerze | Pole środowiska w logach JSON |
 
 Własne uruchomienia CLI mogą dodatkowo ustawiać `DATA_DIR`, `HTTP_HOST`,
@@ -183,9 +187,12 @@ szyfrowany nośnik i regularnie ćwicz odtwarzanie. Procedura w `TECHNICAL.md`.
 
 ## Prywatność i bezpieczeństwo
 
-Nie wysyłaj botowi danych pacjenta, recept, PESEL ani dokumentacji medycznej.
-Telegram widzi wiadomości i metadane; boty nie zapewniają end-to-end encryption.
-Aplikacja nie zapisuje zapytań ani identyfikatorów rozmów w bazie/logach. Sesje są
+Bot jest **prywatny**: bez wypełnionej listy `ALLOWED_USER_IDS` nie wystartuje,
+a użytkownicy spoza listy dostają wyłącznie komunikat odmowy (z własnym
+identyfikatorem, aby operator mógł ich dodać). Obsługiwane są tylko prywatne
+czaty. Nie wysyłaj botowi danych pacjenta, recept, PESEL ani dokumentacji
+medycznej. Telegram widzi wiadomości i metadane; boty nie zapewniają end-to-end
+encryption. Aplikacja nie zapisuje zapytań ani identyfikatorów rozmów w bazie/logach. Sesje są
 tylko w RAM, wygasają po 30 minutach bezczynności (sprzątanie co minutę), limit
 5000 sesji. Przed publicznym uruchomieniem operator powinien opublikować własne
 dane kontaktowe, zasady prywatności i ustalić swoje obowiązki dotyczące danych.

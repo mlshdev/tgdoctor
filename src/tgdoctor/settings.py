@@ -3,6 +3,22 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+def parse_allowed_user_ids(raw: str) -> frozenset[int]:
+    ids: list[int] = []
+    for entry in raw.split(","):
+        entry = entry.strip()
+        if not entry:
+            continue
+        try:
+            identifier = int(entry)
+        except ValueError as exc:
+            raise ValueError(f"ALLOWED_USER_IDS: nieprawidłowy identyfikator {entry!r}") from exc
+        if identifier <= 0:
+            raise ValueError(f"ALLOWED_USER_IDS: identyfikator {entry!r} musi być dodatni")
+        ids.append(identifier)
+    return frozenset(ids)
+
+
 @dataclass(frozen=True)
 class Settings:
     data_dir: Path
@@ -26,11 +42,7 @@ class Settings:
             token=os.environ.get("TELEGRAM_BOT_TOKEN", ""),
             interval_hours=interval,
             stale_hours=stale,
-            allowed_user_ids=frozenset(
-                int(value.strip())
-                for value in os.environ.get("ALLOWED_USER_IDS", "").split(",")
-                if value.strip()
-            ),
+            allowed_user_ids=parse_allowed_user_ids(os.environ.get("ALLOWED_USER_IDS", "")),
             http_host=os.environ.get("HTTP_HOST", "127.0.0.1"),
             http_port=port,
             environment=os.environ.get("ENVIRONMENT", "development"),

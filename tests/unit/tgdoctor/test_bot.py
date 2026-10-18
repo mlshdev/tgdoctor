@@ -9,7 +9,7 @@ from telegram import CallbackQuery, Chat, Message, MessageEntity, Update, User
 from telegram.request import HTTPXRequest
 
 from tests.conftest import LOCATIONS_PAYLOAD, OFFERS_FRAGMENT, PRODUCTS_FRAGMENT
-from tgdoctor.bot import AvailabilityFlow, Bot, Session, keyboard, menu
+from tgdoctor.bot import AvailabilityFlow, Bot, BotContext, Session, keyboard, menu
 from tgdoctor.catalog import Catalog
 from tgdoctor.importer import Importer
 from tgdoctor.ktomalek import KtomalekClient, KtomalekProduct
@@ -23,7 +23,7 @@ def settings(tmp_path: Path) -> Settings:
         token="123456:TEST_TOKEN_NOT_REAL",
         interval_hours=24,
         stale_hours=72,
-        allowed_user_ids=frozenset(),
+        allowed_user_ids=frozenset({42}),
         http_host="127.0.0.1",
         http_port=3000,
         environment="test",
@@ -374,4 +374,109 @@ async def test_allowlist_rejects_unknown_user(
     )
     assert await bot.session(Update(1, message=message)) is None
     assert not bot.sessions
-    assert replies == ["Ten bot jest prywatny. Brak uprawnień."]
+    assert replies == [
+        "Ten bot jest prywatny. Brak uprawnień. Twój identyfikator: 42 — "
+        "może go dodać operator do ALLOWED_USER_IDS."
+    ]
+
+
+@pytest.mark.asyncio
+async def test_allowlist_empty_denies_everyone(
+    populated: Catalog,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from dataclasses import replace
+
+    replies: list[str] = []
+    bot = Bot(populated, replace(settings(tmp_path), allowed_user_ids=frozenset()))
+
+    async def send(
+        update: Update,
+        text: str,
+        markup: object = None,
+    ) -> None:
+        replies.append(text)
+
+    monkeypatch.setattr(bot, "send", send)
+    message = Message(
+        message_id=1,
+        date=datetime.now(UTC),
+        chat=Chat(42, "private"),
+        from_user=User(42, "Test", is_bot=False),
+    )
+    assert await bot.session(Update(1, message=message)) is None
+    assert not bot.sessions
+    assert len(replies) == 1
+    assert "Brak uprawnień" in replies[0]
+
+
+@pytest.mark.asyncio
+async def test_allowlist_admits_listed_user(
+    populated: Catalog,
+    tmp_path: Path,
+) -> None:
+    bot = Bot(populated, settings(tmp_path))
+    message = Message(
+        message_id=1,
+        date=datetime.now(UTC),
+        chat=Chat(42, "private"),
+        from_user=User(42, "Test", is_bot=False),
+    )
+    session = await bot.session(Update(1, message=message))
+    assert session is not None
+    assert 42 in bot.sessions
+
+
+@pytest.mark.asyncio
+async def test_errors_handler_skips_denied_user(
+    populated: Catalog,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from dataclasses import replace
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        result: object = (
+            {"id": 123456, "is_bot": True, "first_name": "Test"}
+            if request.url.path.endswith("/getMe")
+            else True
+        )
+        return httpx.Response(200, json={"ok": True, "result": result})
+
+    bot = Bot(populated, replace(settings(tmp_path), allowed_user_ids=frozenset({1})))
+    application = bot.application(
+        HTTPXRequest(httpx_kwargs={"transport": httpx.MockTransport(respond)})
+    )
+    replies: list[str] = []
+
+    async def send(
+        update: Update,
+        text: str,
+        markup: object = None,
+    ) -> None:
+        replies.append(text)
+
+    monkeypatch.setattr(bot, "send", send)
+    denied = Update(
+        1,
+        message=Message(
+            message_id=1,
+            date=datetime.now(UTC),
+            chat=Chat(42, "private"),
+            from_user=User(42, "Test", is_bot=False),
+        ),
+    )
+    await bot.errors(denied, BotContext.from_error(denied, RuntimeError("boom"), application))
+    assert replies == []
+    allowed = Update(
+        2,
+        message=Message(
+            message_id=2,
+            date=datetime.now(UTC),
+            chat=Chat(1, "private"),
+            from_user=User(1, "Owner", is_bot=False),
+        ),
+    )
+    await bot.errors(allowed, BotContext.from_error(allowed, RuntimeError("boom"), application))
+    assert replies == ["Wystąpił błąd. Spróbuj ponownie lub użyj /start."]

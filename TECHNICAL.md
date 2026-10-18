@@ -102,7 +102,13 @@ polling, sygnalizuje zatrzymanie harmonogramu, czeka na import i zamyka HTTP.
 Compose daje 15 minut na shutdown; ewentualny SIGKILL pozostawia transakcję
 SQLite do odzyskania, nie publikuje połowy katalogu.
 
-Prywatne czaty, opcjonalna allowlista, odstęp 0,7 s na użytkownika. Przetwarzanie
+Prywatne czaty, **wymagana allowlista** (`ALLOWED_USER_IDS`, fail-closed): pusta
+lista odmawia wszystkim, a `tgdoctor run` bez tokenu lub bez niepustej listy
+w ogóle nie startuje (`require_run_settings` w `cli.py`). Parsowanie listy
+(`parse_allowed_user_ids` w `settings.py`) akceptuje wyłącznie dodatnie liczby
+całkowite i podnosi czytelny błąd konfiguracji. Użytkownik spoza listy dostaje
+tylko komunikat odmowy ze swoim identyfikatorem (aby operator mógł go dopisać);
+handler błędów również pomija takich użytkowników. Odstęp 0,7 s na użytkownika. Przetwarzanie
 aktualizacji jest sekwencyjne. Wyniki i sesje tylko w RAM, TTL 30 minut,
 sprzątanie co 60 s, limit 5000. Usuwane są też pomocnicze cache user/chat PTB.
 Callbacki stron i produktów używają losowego nonce i indeksu; stare klawiatury
@@ -257,11 +263,12 @@ build, smoke, dive i Compose validation. `scripts/update_tools.py` ma tylko stdl
 aktualizuje `tool.uv.required-version` i etap uv w Dockerfile razem. Dive w CI
 pochodzi z aktualnego stabilnego wydania GitHub pobranego przez `gh`.
 
-Workflow wymaga uprawnień GHCR i możliwości tworzenia PR przez Actions. PR-y
-utworzone przez `GITHUB_TOKEN` nie wywołują automatycznie kolejnego workflow;
-dlatego walidacja aktualizacji narzędzi odbywa się przed otwarciem PR. Merge
-ręczny. Przed użyciem skonfiguruj ochronę main i wymagane checki `validate` oraz
-`image`. Nie aktywowano automerge ani nie zmieniano ustawień GitHub.
+PR-y Dependabota włączone są w auto-merge przez `dependabot-automerge.yml`
+(`gh pr merge --auto --merge` po `fetch-metadata`); scalenie następuje dopiero,
+gdy wymagane checki ochrony gałęzi (`validate`, `image`) są zielone. PR-y
+utworzone przez `GITHUB_TOKEN` (update-tools) nie wywołują kolejnych workflow,
+dlatego walidacja aktualizacji narzędzi odbywa się przed otwarciem PR — ich
+merge pozostaje ręczny. Merge do main publikuje obraz do GHCR w `validate.yml`.
 
 ## Pomiary i ograniczenia walidacji (2026-10-18)
 
@@ -270,23 +277,21 @@ Na `homevm`, bez dodatkowych capabilities, wykonano rzeczywisty import:
 Snapshot XML obu: 2026-10-18. Wyszukiwanie `alprazolam` i `alprazolamum`:
 po 148 wyników w domyślnych filtrach; to nie rekomendacja ani stan aptek.
 Wszystkie endpointy testu HTTP i readiness odpowiedziały poprawnie. Walidacja
-Linux amd64 po wdrożeniu funkcji aptecznej: **67 testów PASS (8,31 s)**,
-Ruff/format/ty clean; Compose config clean. Live sprawdzenie integracji
-ktomalek.pl z kontenera walidacyjnego: `apap` × Warszawa → 3 produkty,
-1 lokalizacja, 30 aptek z parsowanymi nazwami, odległościami, adresami
-(encje zdekodowane), telefonami, statusami otwarcia i statusami leków.
-Przykładowe czasy końcowego API przez tunel: GTIN 6,57 ms, substancja
-120,04 ms, ATC 183,16 ms. Zawierają opóźnienie SSH i nie są benchmarkiem
-obciążeniowym.
+Linux amd64 po przełączniku prywatnym: **83 testy PASS (8,53 s w kontenerze)**,
+Ruff/format/ty clean; Compose config clean (w tym odmowa przy braku
+`ALLOWED_USER_IDS`). Smoke kontenera produkcyjnego (UID 1000, read-only,
+cap_drop ALL): `/health/live`, `/api/v1/status`, `tgdoctor healthcheck`,
+`tgdoctor backup` PASS; `tgdoctor run` bez allowlisty odmawia startu.
+Live sprawdzenie integracji ktomalek.pl z kontenera walidacyjnego:
+`apap` × Warszawa → 3 produkty, 1 lokalizacja, 30 aptek z parsowanymi nazwami,
+odległościami, adresami (encje zdekodowane), telefonami, statusami otwarcia
+i statusami leków.
 
-Końcowy runtime image: 141 597 162 bajtów nieskompresowane, dive
+Końcowy runtime image: 141 599 575 bajtów nieskompresowanych, dive
 efficiency 97,23%, około 5,66 MB zduplikowanych plików, głównie w bazowym
 Debianie. Testy Telegram używają realnego dispatchera PTB i symulowanych
 odpowiedzi API, bez prawdziwego tokenu; integracja ktomalek jest testowana
-na fixture’ach z realnych przechwyceń. Nie przetestowano fizycznego
-restartu VM, rootless Docker, Podman ani Kubernetes. Nie wykonano wdrożenia
-chmurowego, publikacji do GHCR ani uruchomienia workflow na GitHub,
-ponieważ projekt nie ma skonfigurowanego repozytorium/remote. Poprzednio
-potwierdzono też spójny backup SQLite przy żywym serwerze (23 599 produktów /
-91 907 opakowań) oraz czysty actionlint/shellcheck — niniejsza zmiana tych
-elementów nie dotyka.
+na fixture'ach z realnych przechwyceń. Nie przetestowano fizycznego
+restartu VM, rootless Docker, Podman ani Kubernetes. Repozytorium publiczne
+`mlshdev/tgdoctor`: workflow CI uruchamiają się po pushu, obraz main publikuje
+się do GHCR; wybieraj w Compose stabilny release, nie `edge`.
