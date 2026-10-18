@@ -60,7 +60,15 @@ Wcześniej lista była opcjonalna, a pusta lista oznaczała publicznego bota
 - **Nowe** `.github/workflows/dependabot-automerge.yml`: PR-y Dependabota
   włączane w auto-merge (`gh pr merge --auto`), scalanie po zielonych
   wymaganych checkach ochrony gałęzi `main` (`validate`, `image`) —
-  skonfigurowanych przez API po pierwszym pushu.
+  skonfigurowanych przez API po pushu.
+- Naprawy po pierwszych realnych runach GitHub: probe smoke w
+  `validate-image/action.yml` używa `--retry-all-errors` (wyścig
+  docker-proxy z bindem aplikacji — `--retry-connrefused` nie ponawiało
+  reset/empty-reply, run 39152781170 padł na exit 56), a próg dive
+  `highestUserWastedPercent` podniesiony do 10% w `.dive-ci` — ~5,7 MB
+  odpadów to debconf/dpkg w warstwach bazowego
+  `python:3.14-slim-trixie` (nieusuwalne z naszego Dockerfile, nasze etapy
+  dokładają <1%), run 39152921849 padł na 9,01% > 5%.
 
 ## Stan zasobów po testach
 

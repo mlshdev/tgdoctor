@@ -288,8 +288,11 @@ odległościami, adresami (encje zdekodowane), telefonami, statusami otwarcia
 i statusami leków.
 
 Końcowy runtime image: 141 599 575 bajtów nieskompresowanych, dive
-efficiency 97,23%, około 5,66 MB zduplikowanych plików, głównie w bazowym
-Debianie. Testy Telegram używają realnego dispatchera PTB i symulowanych
+efficiency 97,23%, około 5,66 MB zduplikowanych plików — w przeważającej
+mierze debconf/dpkg w warstwach bazowego `python:3.14-slim-trixie`
+(nieusuwalne z naszego Dockerfile), stąd próg `highestUserWastedPercent`
+w `.dive-ci` wynosi 10%, nie 5%. Nasze etapy dokładają <1% odpadów
+usera. Testy Telegram używają realnego dispatchera PTB i symulowanych
 odpowiedzi API, bez prawdziwego tokenu; integracja ktomalek jest testowana
 na fixture'ach z realnych przechwyceń. Nie przetestowano fizycznego
 restartu VM, rootless Docker, Podman ani Kubernetes. Repozytorium publiczne

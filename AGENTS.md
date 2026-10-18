@@ -28,7 +28,7 @@ Containers — single-service repo at root:
 Dockerfile                # root; stages: uv → builder → validation → runtime; fails on non-amd64
 compose.yml               # local stack: one bot service, loopback 127.0.0.1:3000
 .dockerignore
-.dive-ci                   # dive thresholds: efficiency ≥ 0.95, user-wasted ≤ 5%
+.dive-ci                   # dive thresholds: efficiency ≥ 0.95, user-wasted ≤ 10% (base-image debconf/dpkg churn dominates)
 bot/config  bot/data  bot/logs   # bind-mount sources (.gitkeep) — runtime state, never source
 ```
 
