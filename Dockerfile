@@ -11,11 +11,11 @@ RUN uv sync --locked --no-dev --no-editable --no-cache
 
 FROM builder AS validation
 COPY tests ./tests
-COPY tools ./tools
+COPY scripts ./scripts
 RUN uv sync --locked --no-editable --no-cache \
-    && uv run --no-sync ruff check src tests tools \
-    && uv run --no-sync ruff format --check src tests tools \
-    && uv run --no-sync ty check src tests tools \
+    && uv run --no-sync ruff check src tests scripts \
+    && uv run --no-sync ruff format --check src tests scripts \
+    && uv run --no-sync ty check src tests scripts \
     && uv run --no-sync pytest
 
 FROM docker.io/library/python:3.14-slim-trixie AS runtime

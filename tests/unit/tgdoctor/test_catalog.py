@@ -4,12 +4,11 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import product, publish, snapshot
 from tgdoctor.catalog import Catalog
 from tgdoctor.models import Attempt, Dataset, Search, now
 from tgdoctor.normalize import alternatives, normalize
 from tgdoctor.sources import SourceError
-
-from .conftest import product, publish, snapshot
 
 
 @pytest.mark.parametrize(

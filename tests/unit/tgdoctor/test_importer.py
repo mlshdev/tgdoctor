@@ -9,14 +9,13 @@ import pytest
 from defusedxml.common import DefusedXmlException
 from pydantic import ValidationError
 
+from tests.conftest import product, publish
+from tests.conftest import snapshot as make_snapshot
 from tgdoctor.catalog import Catalog
 from tgdoctor.importer import Importer, download, exclusive, import_devices
 from tgdoctor.models import Dataset, Product, Search, now
 from tgdoctor.sources import COMMON_NAMESPACE, COMMON_TYPES, CONTRACTS, SourceError, official_url
 from tgdoctor.xmlfeed import records
-
-from .conftest import product, publish
-from .conftest import snapshot as make_snapshot
 
 
 def test_parse_xml(xml_factory: Callable[..., Path]) -> None:

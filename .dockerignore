@@ -6,5 +6,5 @@
 !src/**
 !tests/
 !tests/**
-!tools/
-!tools/**
+!scripts/
+!scripts/**

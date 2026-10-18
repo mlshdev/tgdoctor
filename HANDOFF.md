@@ -35,7 +35,7 @@ z faktyczną dostępnością ani wnioskami klinicznymi.
   cooldown 5 s na nowe wyszukiwanie nazwy, teksty polskie, brak linków
   wychodzących. Komunikat prywatności uzupełniony o przekazanie nazwy leku
   i miejscowości do ktomalek.pl.
-- `tests/test_ktomalek.py` (nowy, 11 testów) + przepisany test dispatchu
+- `tests/unit/tgdoctor/test_ktomalek.py` (nowy, 11 testów) + przepisany test dispatchu
   aptecznego w `test_bot.py`; fixtury HTML/JSON z realnych przechwyceń
   w `tests/conftest.py` (współdzielone). Regresja: stary callback
   `pharmacies` nadal ignorowany, przyciski bez URL.
@@ -91,3 +91,17 @@ Utworzyć bota u BotFather, ustawić `TELEGRAM_BOT_TOKEN` w `.env`
 wykonać rozmowę testową: `/start` → „Sprawdź w aptece” → nazwa handlowa →
 wybór produktu → miejscowość → wynik; przetestować `/apteka Apap`
 z miastem spoza Warszawy i nieistniejącą nazwą (obsługa błędów).
+
+## Restrukturyzacja układu (2026-10-18)
+
+Przeniesiono `tools/` → `scripts/`, płaskie testy → `tests/unit/tgdoctor/`
+(lustro `src/tgdoctor/`), `test_http.py` → `test_httpserver.py`; usunięto
+`tests/__init__.py` — pytest działa w trybie `--import-mode=importlib`
+(bez `__init__.py`, bez sys.path). Importy pomocnicze przepisano na
+`from tests.conftest import …` (bezwzględne). Aktualizacja: Dockerfile
+(`COPY scripts`, lint `src tests scripts`), `.dockerignore`,
+`update-tools.yml`, AGENTS.md, TECHNICAL.md, `.gitignore`
+(`*/logs/*` odzyskuje `!*/logs/.gitkeep`; ignor ` .playwright-mcp/`).
+Bramka lokalna po zmianach: ruff/format/ty czyste, 67 testów PASS.
+Kontenerowy etap `validation` (build linux/amd64 na `homevm`): PASS —
+ta sama bramka w kontenerze po przeniesieniu `scripts/` i `tests/unit/`.

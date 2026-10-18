@@ -29,7 +29,7 @@ select = ["E", "F", "I", "UP", "B", "SIM", "C4", "RUF"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q --import-mode=importlib"
 
 [tool.ty.environment]
 python-version = "3.14"

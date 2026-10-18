@@ -253,7 +253,7 @@ W produkcji wybieraj stabilny release, nie `edge` ani digest w Compose.
 Dependabot: uv, Docker i GitHub Actions, grupowanie per ekosystem, wszystkie
 stabilne wersje, dwa razy w tygodniu. Osobny `update-tools.yml` sprawdza build
 backend/uv i aktualizuje lock transitive; przed otwarciem PR wykonuje testy,
-build, smoke, dive i Compose validation. `tools/update_tools.py` ma tylko stdlib,
+build, smoke, dive i Compose validation. `scripts/update_tools.py` ma tylko stdlib,
 aktualizuje `tool.uv.required-version` i etap uv w Dockerfile razem. Dive w CI
 pochodzi z aktualnego stabilnego wydania GitHub pobranego przez `gh`.
 

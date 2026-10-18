@@ -3,11 +3,10 @@ from collections.abc import Generator
 import httpx
 import pytest
 
+from tests.conftest import product, publish
 from tgdoctor.catalog import Catalog
 from tgdoctor.httpserver import start_server
 from tgdoctor.models import Dataset, Detail, Results
-
-from .conftest import product, publish
 
 
 @pytest.fixture
