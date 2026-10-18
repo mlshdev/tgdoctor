@@ -59,8 +59,9 @@ Wcześniej lista była opcjonalna, a pusta lista oznaczała publicznego bota
 - `dependabot.yml`: uv/docker/github-actions, pn/czw, grupowanie.
 - **Nowe** `.github/workflows/dependabot-automerge.yml`: PR-y Dependabota
   włączane w auto-merge (`gh pr merge --auto`), scalanie po zielonych
-  wymaganych checkach ochrony gałęzi `main` (`validate`, `image`) —
-  skonfigurowanych przez API po pushu.
+  wymaganych checkach ochrony gałęzi `main` — **skonfigurowanych przez API**:
+  `required_status_checks` `validate` + `image`, `strict` (aktualna baza),
+  `enforce_admins=false` (właściciel może nadal pushować bezpośrednio).
 - Naprawy po pierwszych realnych runach GitHub: probe smoke w
   `validate-image/action.yml` używa `--retry-all-errors` (wyścig
   docker-proxy z bindem aplikacji — `--retry-connrefused` nie ponawiało

@@ -265,7 +265,9 @@ pochodzi z aktualnego stabilnego wydania GitHub pobranego przez `gh`.
 
 PR-y Dependabota włączone są w auto-merge przez `dependabot-automerge.yml`
 (`gh pr merge --auto --merge` po `fetch-metadata`); scalenie następuje dopiero,
-gdy wymagane checki ochrony gałęzi (`validate`, `image`) są zielone. PR-y
+gdy wymagane checki ochrony gałęzi (`validate`, `image`) są zielone — ochrona
+`main` jest włączona przez API (`strict`, `enforce_admins=false`: właściciel
+może pushować bezpośrednio). PR-y
 utworzone przez `GITHUB_TOKEN` (update-tools) nie wywołują kolejnych workflow,
 dlatego walidacja aktualizacji narzędzi odbywa się przed otwarciem PR — ich
 merge pozostaje ręczny. Merge do main publikuje obraz do GHCR w `validate.yml`.
