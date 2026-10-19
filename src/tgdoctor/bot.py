@@ -723,6 +723,8 @@ class Bot:
         elif action == "user-add":
             await self.user_add_prompt(update, session)
         elif action == "user-del":
+            if not session.admin:
+                return
             nonce, _, raw = value.partition(":")
             if nonce != session.nonce or not raw.isdigit() or not self.allowlist.remove(int(raw)):
                 await self.send(update, "Ten przycisk wygasł. Użyj bieżącego menu.", menu(session))

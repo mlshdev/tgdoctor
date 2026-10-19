@@ -743,3 +743,30 @@ async def test_real_dispatch_admin_user_management(
         await click(str(delete_callback()))
         assert not allowlist.is_allowed(77)
         assert "Brak dodatkowych użytkowników." in parse_qs(sent[-1].content.decode())["text"][0]
+
+        allowlist.add(55, 42)
+        allowlist.add(88, 42)
+        newcomer = Message(
+            message_id=4,
+            date=datetime.now(UTC),
+            chat=Chat(88, "private"),
+            from_user=User(88, "Newcomer", is_bot=False),
+            text="/start",
+            entities=[MessageEntity("bot_command", 0, 6)],
+        )
+        newcomer.set_bot(application.bot)
+        await application.process_update(Update(5, message=newcomer))
+        assert 88 in bot.sessions
+        forged = CallbackQuery(
+            "q2",
+            User(88, "Newcomer", is_bot=False),
+            "instance",
+            message=newcomer,
+            data=f"user-del:{bot.sessions[88].nonce}:55",
+        )
+        forged.set_bot(application.bot)
+        bot.sessions[88].last_request = 0
+        messages_before = sum(r.url.path.endswith("/sendMessage") for r in sent)
+        await application.process_update(Update(6, callback_query=forged))
+        assert allowlist.is_allowed(55)
+        assert sum(r.url.path.endswith("/sendMessage") for r in sent) == messages_before

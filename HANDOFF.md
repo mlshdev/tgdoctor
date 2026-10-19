@@ -21,6 +21,13 @@ efekt bez watcherów i wyścigów częściowego zapisu).
   `Session.admin` (tylko operatorzy); zwykli użytkownicy nie zarządzają listą.
   Operatorów nie da się usunąć z bota (tylko `.env`). Handler błędów pomija
   nieuprawnionych wg tej samej sumy zbiorów.
+- Hardening po audycie roli (2026-10-19): callback
+  `user-del` pierwotnie sprawdzał tylko nonce — zwykły użytkownik mógł podrobić
+  `user-del:<własny-nonce>:<id>` i usuwać innych (nonce jest w każdej jego
+  klawiaturze). Dodane `if not session.admin: return` w gałęzi `user-del`;
+  regresja w `test_real_dispatch_admin_user_management` (sfałszowany click
+  regularnego użytkownika z własnym poprawnym nonce → milczący no-op, ofiara
+  pozostaje na liście). Test udowodniony: bez guardu pada, z guardem przechodzi.
 
 ### Zmienione pliki
 
