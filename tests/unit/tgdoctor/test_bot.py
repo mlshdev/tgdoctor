@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 from threading import Event
@@ -5,10 +6,11 @@ from urllib.parse import parse_qs
 
 import httpx
 import pytest
-from telegram import CallbackQuery, Chat, Message, MessageEntity, Update, User
+from telegram import CallbackQuery, Chat, InlineKeyboardMarkup, Message, MessageEntity, Update, User
 from telegram.request import HTTPXRequest
 
 from tests.conftest import LOCATIONS_PAYLOAD, OFFERS_FRAGMENT, PRODUCTS_FRAGMENT
+from tgdoctor.allowlist import Allowlist
 from tgdoctor.bot import AvailabilityFlow, Bot, BotContext, Session, keyboard, menu
 from tgdoctor.catalog import Catalog
 from tgdoctor.importer import Importer
@@ -46,7 +48,11 @@ def test_callback_size() -> None:
     ]
     session.apteka = flow
     session.nonce = "12345678"
-    instance = Bot(Catalog(Path("callback-size.sqlite3")), settings(Path("callback-size")))
+    instance = Bot(
+        Catalog(Path("callback-size.sqlite3")),
+        settings(Path("callback-size")),
+        Allowlist(Path("callback-size/allowlist.sqlite3")),
+    )
     markups = (
         menu(session),
         keyboard([[("Produkt", "item:12345678:0")]]),
@@ -65,6 +71,7 @@ def test_callback_size() -> None:
 async def test_real_dispatch_menu_search_detail(
     populated: Catalog,
     tmp_path: Path,
+    allowlist: Allowlist,
 ) -> None:
     calls: list[httpx.Request] = []
 
@@ -99,7 +106,7 @@ async def test_real_dispatch_menu_search_detail(
         )
 
     request = HTTPXRequest(httpx_kwargs={"transport": httpx.MockTransport(respond)})
-    bot = Bot(populated, settings(tmp_path))
+    bot = Bot(populated, settings(tmp_path), allowlist)
     application = bot.application(request)
     user = User(id=42, first_name="Test", is_bot=False)
     message = Message(
@@ -153,6 +160,7 @@ async def test_real_dispatch_menu_search_detail(
 async def test_real_dispatch_apteka_flow(
     populated: Catalog,
     tmp_path: Path,
+    allowlist: Allowlist,
 ) -> None:
     telegram: list[httpx.Request] = []
 
@@ -205,7 +213,7 @@ async def test_real_dispatch_apteka_flow(
 
     request = HTTPXRequest(httpx_kwargs={"transport": httpx.MockTransport(respond)})
     client = KtomalekClient(transport=httpx.MockTransport(ktomalek_respond))
-    bot = Bot(populated, settings(tmp_path), client)
+    bot = Bot(populated, settings(tmp_path), allowlist, client)
     application = bot.application(request)
     user = User(id=42, first_name="Test", is_bot=False)
     message = Message(
@@ -283,8 +291,12 @@ async def test_real_dispatch_apteka_flow(
 
 
 @pytest.mark.asyncio
-async def test_private_chat_access_and_rate_limit(populated: Catalog, tmp_path: Path) -> None:
-    bot = Bot(populated, settings(tmp_path))
+async def test_private_chat_access_and_rate_limit(
+    populated: Catalog,
+    tmp_path: Path,
+    allowlist: Allowlist,
+) -> None:
+    bot = Bot(populated, settings(tmp_path), allowlist)
     user = User(id=42, first_name="Test", is_bot=False)
     message = Message(
         message_id=1, date=datetime.now(UTC), chat=Chat(42, "private"), from_user=user
@@ -316,6 +328,7 @@ def test_menu_apteka_button_without_external_links() -> None:
 async def test_background_import_lifecycle(
     populated: Catalog,
     tmp_path: Path,
+    allowlist: Allowlist,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import asyncio
@@ -335,7 +348,7 @@ async def test_background_import_lifecycle(
             result = True
         return httpx.Response(200, json={"ok": True, "result": result})
 
-    bot = Bot(populated, settings(tmp_path))
+    bot = Bot(populated, settings(tmp_path), allowlist)
     application = bot.application(
         HTTPXRequest(httpx_kwargs={"transport": httpx.MockTransport(respond)})
     )
@@ -351,12 +364,13 @@ async def test_background_import_lifecycle(
 async def test_allowlist_rejects_unknown_user(
     populated: Catalog,
     tmp_path: Path,
+    allowlist: Allowlist,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from dataclasses import replace
 
     replies: list[str] = []
-    bot = Bot(populated, replace(settings(tmp_path), allowed_user_ids=frozenset({1})))
+    bot = Bot(populated, replace(settings(tmp_path), allowed_user_ids=frozenset({1})), allowlist)
 
     async def send(
         update: Update,
@@ -376,7 +390,7 @@ async def test_allowlist_rejects_unknown_user(
     assert not bot.sessions
     assert replies == [
         "Ten bot jest prywatny. Brak uprawnień. Twój identyfikator: 42 — "
-        "może go dodać operator do ALLOWED_USER_IDS."
+        "może go dodać operator przez menu bota (Użytkownicy) lub ALLOWED_USER_IDS."
     ]
 
 
@@ -384,12 +398,13 @@ async def test_allowlist_rejects_unknown_user(
 async def test_allowlist_empty_denies_everyone(
     populated: Catalog,
     tmp_path: Path,
+    allowlist: Allowlist,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from dataclasses import replace
 
     replies: list[str] = []
-    bot = Bot(populated, replace(settings(tmp_path), allowed_user_ids=frozenset()))
+    bot = Bot(populated, replace(settings(tmp_path), allowed_user_ids=frozenset()), allowlist)
 
     async def send(
         update: Update,
@@ -415,8 +430,9 @@ async def test_allowlist_empty_denies_everyone(
 async def test_allowlist_admits_listed_user(
     populated: Catalog,
     tmp_path: Path,
+    allowlist: Allowlist,
 ) -> None:
-    bot = Bot(populated, settings(tmp_path))
+    bot = Bot(populated, settings(tmp_path), allowlist)
     message = Message(
         message_id=1,
         date=datetime.now(UTC),
@@ -432,6 +448,7 @@ async def test_allowlist_admits_listed_user(
 async def test_errors_handler_skips_denied_user(
     populated: Catalog,
     tmp_path: Path,
+    allowlist: Allowlist,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from dataclasses import replace
@@ -444,7 +461,7 @@ async def test_errors_handler_skips_denied_user(
         )
         return httpx.Response(200, json={"ok": True, "result": result})
 
-    bot = Bot(populated, replace(settings(tmp_path), allowed_user_ids=frozenset({1})))
+    bot = Bot(populated, replace(settings(tmp_path), allowed_user_ids=frozenset({1})), allowlist)
     application = bot.application(
         HTTPXRequest(httpx_kwargs={"transport": httpx.MockTransport(respond)})
     )
@@ -480,3 +497,249 @@ async def test_errors_handler_skips_denied_user(
     )
     await bot.errors(allowed, BotContext.from_error(allowed, RuntimeError("boom"), application))
     assert replies == ["Wystąpił błąd. Spróbuj ponownie lub użyj /start."]
+
+
+def test_menu_users_button_admin_only() -> None:
+    member = Session()
+    assert "Użytkownicy" not in {b.text for row in menu(member).inline_keyboard for b in row}
+    operator = Session()
+    operator.admin = True
+    assert "Użytkownicy" in {b.text for row in menu(operator).inline_keyboard for b in row}
+
+
+@pytest.mark.asyncio
+async def test_dynamic_allowlist_admits_db_user(
+    populated: Catalog,
+    tmp_path: Path,
+    allowlist: Allowlist,
+) -> None:
+    from dataclasses import replace
+
+    allowlist.add(42, 1)
+    bot = Bot(populated, replace(settings(tmp_path), allowed_user_ids=frozenset({1})), allowlist)
+    message = Message(
+        message_id=1,
+        date=datetime.now(UTC),
+        chat=Chat(42, "private"),
+        from_user=User(42, "Test", is_bot=False),
+    )
+    session = await bot.session(Update(1, message=message))
+    assert session is not None
+    assert not session.admin
+    assert "Użytkownicy" not in {b.text for row in menu(session).inline_keyboard for b in row}
+
+
+@pytest.mark.asyncio
+async def test_admin_adds_user_flow(
+    populated: Catalog,
+    tmp_path: Path,
+    allowlist: Allowlist,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    replies: list[tuple[str, InlineKeyboardMarkup | None]] = []
+
+    async def send(update: Update, text: str, markup: object = None) -> None:
+        replies.append((text, markup if isinstance(markup, InlineKeyboardMarkup) else None))
+
+    bot = Bot(populated, settings(tmp_path), allowlist)
+    monkeypatch.setattr(bot, "send", send)
+    message = Message(
+        message_id=1,
+        date=datetime.now(UTC),
+        chat=Chat(42, "private"),
+        from_user=User(42, "Test", is_bot=False),
+    )
+    session = await bot.session(Update(1, message=message))
+    assert session is not None
+    await bot.user_add_prompt(Update(2, message=message), session)
+    assert session.awaiting == "user-id"
+    assert "Podaj numeryczny identyfikator" in replies[-1][0]
+    await bot.user_added(Update(3, message=message), session, "77")
+    assert allowlist.is_allowed(77)
+    assert "• 77 — dodał 42" in replies[-1][0]
+    markup = replies[-1][1]
+    assert markup is not None
+    callbacks = {button.callback_data for row in markup.inline_keyboard for button in row}
+    assert "user-add" in callbacks
+    assert any(str(data).startswith("user-del:") for data in callbacks)
+
+
+@pytest.mark.asyncio
+async def test_admin_rejects_invalid_identifiers(
+    populated: Catalog,
+    tmp_path: Path,
+    allowlist: Allowlist,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    replies: list[str] = []
+
+    async def send(update: Update, text: str, markup: object = None) -> None:
+        replies.append(text)
+
+    bot = Bot(populated, settings(tmp_path), allowlist)
+    monkeypatch.setattr(bot, "send", send)
+    message = Message(
+        message_id=1,
+        date=datetime.now(UTC),
+        chat=Chat(42, "private"),
+        from_user=User(42, "Test", is_bot=False),
+    )
+    session = Session()
+    session.admin = True
+    await bot.user_added(Update(1, message=message), session, "abc")
+    assert replies[-1] == "Podaj sam identyfikator: dodatnią liczbę, tylko cyfry."
+    await bot.user_added(Update(2, message=message), session, "0")
+    assert replies[-1] == "Identyfikator musi być dodatnią liczbą."
+    await bot.user_added(Update(3, message=message), session, "99999999999999999999")
+    assert replies[-1] == "Identyfikator musi być dodatnią liczbą."
+    await bot.user_added(Update(4, message=message), session, "42")
+    assert replies[-1] == "Ten identyfikator jest już operatorem."
+    assert allowlist.entries() == []
+
+
+@pytest.mark.asyncio
+async def test_user_management_guarded_from_non_admins(
+    populated: Catalog,
+    tmp_path: Path,
+    allowlist: Allowlist,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from dataclasses import replace
+
+    replies: list[str] = []
+
+    async def send(update: Update, text: str, markup: object = None) -> None:
+        replies.append(text)
+
+    allowlist.add(42, 1)
+    bot = Bot(populated, replace(settings(tmp_path), allowed_user_ids=frozenset({1})), allowlist)
+    monkeypatch.setattr(bot, "send", send)
+    message = Message(
+        message_id=1,
+        date=datetime.now(UTC),
+        chat=Chat(42, "private"),
+        from_user=User(42, "Test", is_bot=False),
+    )
+    session = await bot.session(Update(1, message=message))
+    assert session is not None
+    await bot.users(Update(2, message=message), session)
+    await bot.user_add_prompt(Update(3, message=message), session)
+    await bot.user_added(Update(4, message=message), session, "99")
+    assert replies == []
+    assert not allowlist.is_allowed(99)
+    assert session.awaiting == ""
+
+
+@pytest.mark.asyncio
+async def test_real_dispatch_admin_user_management(
+    populated: Catalog,
+    tmp_path: Path,
+    allowlist: Allowlist,
+) -> None:
+    sent: list[httpx.Request] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        if request.url.path.endswith("/getMe"):
+            return httpx.Response(
+                200,
+                json={
+                    "ok": True,
+                    "result": {
+                        "id": 123456,
+                        "is_bot": True,
+                        "first_name": "TestBot",
+                        "username": "test_bot",
+                    },
+                },
+            )
+        if request.url.path.endswith("/answerCallbackQuery"):
+            return httpx.Response(200, json={"ok": True, "result": True})
+        return httpx.Response(
+            200,
+            json={
+                "ok": True,
+                "result": {
+                    "message_id": 1,
+                    "date": 1,
+                    "chat": {"id": 42, "type": "private"},
+                    "text": "ok",
+                },
+            },
+        )
+
+    def delete_callback() -> object:
+        for request in reversed(sent):
+            if not request.url.path.endswith("/sendMessage"):
+                continue
+            raw = parse_qs(request.content.decode()).get("reply_markup", [""])[0]
+            if raw and "user-del:" in raw:
+                markup = json.loads(raw)
+                return next(
+                    button["callback_data"]
+                    for row in markup["inline_keyboard"]
+                    for button in row
+                    if str(button["callback_data"]).startswith("user-del:")
+                )
+        raise AssertionError("no user-del button in sent markups")
+
+    request = HTTPXRequest(httpx_kwargs={"transport": httpx.MockTransport(respond)})
+    bot = Bot(populated, settings(tmp_path), allowlist)
+    application = bot.application(request)
+    user = User(id=42, first_name="Test", is_bot=False)
+    message = Message(
+        message_id=1,
+        date=datetime.now(UTC),
+        chat=Chat(42, "private"),
+        from_user=user,
+        text="/start",
+        entities=[MessageEntity("bot_command", 0, 6)],
+    )
+    message.set_bot(application.bot)
+    async with application:
+        await application.process_update(Update(1, message=message))
+        session = bot.sessions[42]
+        assert session.admin
+
+        async def click(data: str) -> None:
+            session.last_request = 0
+            callback = CallbackQuery("q", user, "instance", message=message, data=data)
+            callback.set_bot(application.bot)
+            await application.process_update(Update(2, callback_query=callback))
+
+        await click("users")
+        assert "Operatorzy" in sent[-1].content.decode()
+        await click("user-add")
+        session.last_request = 0
+        identifier = Message(
+            message_id=2,
+            date=datetime.now(UTC),
+            chat=Chat(42, "private"),
+            from_user=user,
+            text="77",
+        )
+        identifier.set_bot(application.bot)
+        await application.process_update(Update(3, message=identifier))
+        assert allowlist.is_allowed(77)
+
+        session.last_request = 0
+        stranger = Message(
+            message_id=3,
+            date=datetime.now(UTC),
+            chat=Chat(77, "private"),
+            from_user=User(77, "Stranger", is_bot=False),
+            text="/start",
+            entities=[MessageEntity("bot_command", 0, 6)],
+        )
+        stranger.set_bot(application.bot)
+        await application.process_update(Update(4, message=stranger))
+        assert 77 in bot.sessions
+        assert not bot.sessions[77].admin
+
+        await click("user-del:obsolete:77")
+        assert "wygas" in sent[-1].content.decode()
+        assert allowlist.is_allowed(77)
+        session.last_request = 0
+        await click(str(delete_callback()))
+        assert not allowlist.is_allowed(77)
+        assert "Brak dodatkowych użytkowników." in parse_qs(sent[-1].content.decode())["text"][0]

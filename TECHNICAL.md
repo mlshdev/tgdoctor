@@ -115,6 +115,25 @@ Callbacki stron i produktów używają losowego nonce i indeksu; stare klawiatur
 są odrzucane. Dane callbacków mieszczą się w 64 bajtach. Tekst wyświetlany bez
 interpretacji HTML, długości wiadomości i stron ograniczone.
 
+### Allowlista dynamiczna — `allowlist.py`
+
+Dwie klasy dostępu: **operatorzy** (statyczna lista `ALLOWED_USER_IDS`,
+zmiana wymaga restartu) i **użytkownicy** dodawani dynamicznie przez operatorów
+z menu bota (przycisk Użytkownicy → Dodaj użytkownika / Usuń). Stan użytkowników
+mieszka w osobnej bazie SQLite `allowlist.sqlite3` w katalogu danych
+(tabela `allowed_users`: `user_id`, `added_by`, `added_at`; `PRAGMA user_version`
+strażnikiem schematu jak w katalogu). Członkostwo jest sprawdzane **przy każdej
+wiadomości** (`Bot.allowed`: operator ∪ SQLite), więc zmiany działają natychmiast,
+bez restartu i bez watcherów. `Allowlist` otwiera krótkotrwałe połączenia
+(WAL, busy_timeout 30 s), identyczne wzorce jak `Catalog`. Sesja dostaje flagę
+`admin` tylko dla operatorów; przycisk Użytkownicy w menu i wszystkie akcje
+zarządzania (`users`, `user-add`, `user-del:<nonce>:<id>`, tryb tekstowy
+`user-id`) są dodatkowo strzeżone tą flagą — zwykły użytkownik nie może
+zmienić listy. Operatorów nie da się usunąć z bota (tylko edycją `.env`).
+Komunikat odmawy podaje identyfikator, by operator mógł go dopisać jednym
+kliknięciem. Wybór SQLite zamiast oglądanego config.yml: brak nowej zależności,
+atomowe zapisy i brak wyścigów częściowego zapisu pliku.
+
 ### Dostępność apteczna — /apteka (ktomalek.pl)
 
 Klient w `ktomalek.py` korzysta z wewnętrznych endpointów XHR serwisu

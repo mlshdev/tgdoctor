@@ -67,7 +67,7 @@ potwierdź telefonicznie lub w aptece. To nie jest porada medyczna.
    dodawania do grup (`/setjoingroups`); aplikacja i tak obsługuje tylko prywatne czaty.
 2. Skopiuj `.env.example` do `.env`, ustaw `TELEGRAM_BOT_TOKEN`
    **oraz `ALLOWED_USER_IDS`** — bot odpowiada **wyłącznie** wymienionym tam
-   użytkownikom i odmawia startu bez tej listy. Swój numeryczny identyfikator
+   operatorom i odmawia startu bez tej listy. Swój numeryczny identyfikator
    Telegrama sprawdzisz przez @userinfobot albo w komunikacie odmowy bota
    (bot podaje go w odpowiedzi). Nie publikuj tokenu ani nie wklejaj go
    do czatu z asystentem.
@@ -164,13 +164,32 @@ jest automatyczną weryfikacją. Stare dane są oznaczane jako nieaktualne.
 | Zmienna | Domyślnie | Znaczenie |
 |---|---|---|
 | `TELEGRAM_BOT_TOKEN` | wymagana | Sekret od BotFather |
-| `ALLOWED_USER_IDS` | wymagana | Lista numerycznych ID Telegram oddzielona przecinkami; bot odpowiada **wyłącznie** wymienionym użytkownikom, pusta lista odmawia wszystkim i blokuje start |
+| `ALLOWED_USER_IDS` | wymagana | Lista numerycznych ID Telegram oddzielona przecinkami — **operatorzy** bota (fail-closed: pusta lista odmawia wszystkim i blokuje start). Operatorzy mogą dodawać i usuwać zwykłych użytkowników bezpośrednio z menu bota (patrz niżej) |
 | `IMPORT_INTERVAL_HOURS` | `24` | Interwał importu, od 1 do 168 h |
 | `STALE_AFTER_HOURS` | `72` | Próg nieaktualności kontroli i daty danych, 24–720 h |
 | `ENVIRONMENT` | `production` w kontenerze | Pole środowiska w logach JSON |
 
 Własne uruchomienia CLI mogą dodatkowo ustawiać `DATA_DIR`, `HTTP_HOST`,
 `HTTP_PORT`. `.env` jest czytany przez Compose, nie automatycznie przez Python.
+
+## Zarządzanie użytkownikami z menu bota
+
+`ALLOWED_USER_IDS` to statyczna lista **operatorów** — jej zmiana wymaga edycji
+`.env` i restartu. Operatorzy mogą natomiast **dynamicznie** dopuszczać i
+usuwać zwykłych użytkowników bezpośrednio w rozmowie z botem:
+
+1. W menu bota (widocznym tylko operatorom) wybierz **Użytkownicy**.
+2. **Dodaj użytkownika** i podaj jego numeryczny identyfikator Telegram —
+   np. identyfikator z komunikatu odmowy, który bot wysyła nieznajomym,
+   albo z @userinfobot.
+3. Dodany użytkownik uzyskuje dostęp **natychmiast**, bez restartu — członkostwo
+   jest sprawdzane w SQLite przy każdej wiadomości.
+4. Przycisk **Usuń <id>** wycofuje dostęp równie natychmiast.
+
+Zwykli użytkownicy mogą korzystać z bota, ale nie widzą przycisku
+Użytkownicy i nie mogą zmieniać listy. Dynamiczna lista jest przechowywana
+w pliku `allowlist.sqlite3` w katalogu danych (`/data` w kontenerze) —
+identyfikator, autor dodania i data; żadnych innych danych.
 
 ## API lokalne i kopie
 
@@ -189,13 +208,16 @@ szyfrowany nośnik i regularnie ćwicz odtwarzanie. Procedura w `TECHNICAL.md`.
 
 Bot jest **prywatny**: bez wypełnionej listy `ALLOWED_USER_IDS` nie wystartuje,
 a użytkownicy spoza listy dostają wyłącznie komunikat odmowy (z własnym
-identyfikatorem, aby operator mógł ich dodać). Obsługiwane są tylko prywatne
-czaty. Nie wysyłaj botowi danych pacjenta, recept, PESEL ani dokumentacji
-medycznej. Telegram widzi wiadomości i metadane; boty nie zapewniają end-to-end
-encryption. Aplikacja nie zapisuje zapytań ani identyfikatorów rozmów w bazie/logach. Sesje są
-tylko w RAM, wygasają po 30 minutach bezczynności (sprzątanie co minutę), limit
-5000 sesji. Przed publicznym uruchomieniem operator powinien opublikować własne
-dane kontaktowe, zasady prywatności i ustalić swoje obowiązki dotyczące danych.
+identyfikatorem, aby operator mógł ich dodać — przez menu bota lub `.env`).
+Obsługiwane są tylko prywatne czaty. Nie wysyłaj botowi danych pacjenta, recept,
+PESEL ani dokumentacji medycznej. Telegram widzi wiadomości i metadane; boty
+nie zapewniają end-to-end encryption. Aplikacja nie zapisuje zapytań ani
+historii rozmów w bazie/logach — jedynym wyjątkiem jest lista dopuszczonych
+użytkowników (`allowlist.sqlite3`: identyfikator Telegram, autor dodania i data).
+Sesje są tylko w RAM, wygasają po 30 minutach bezczynności (sprzątanie co
+minutę), limit 5000 sesji. Przed publicznym uruchomieniem operator powinien
+opublikować własne dane kontaktowe, zasady prywatności i ustalić swoje
+obowiązki dotyczące danych.
 
 ## Źródła i stan weryfikacji
 

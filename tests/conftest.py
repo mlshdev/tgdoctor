@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from tgdoctor.allowlist import Allowlist
 from tgdoctor.catalog import Catalog
 from tgdoctor.models import Attempt, Dataset, Package, Product, Snapshot, SourceNode, Substance, now
 
@@ -165,6 +166,13 @@ def publish(catalog: Catalog, items: list[Product], snap: Snapshot | None = None
 @pytest.fixture
 def catalog(tmp_path: Path) -> Catalog:
     result = Catalog(tmp_path / "catalog.sqlite3")
+    result.initialize()
+    return result
+
+
+@pytest.fixture
+def allowlist(tmp_path: Path) -> Allowlist:
+    result = Allowlist(tmp_path / "allowlist.sqlite3")
     result.initialize()
     return result
 

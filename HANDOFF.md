@@ -1,6 +1,67 @@
-# tgdoctor — stan końcowy, 2026-10-18 (przełącznik prywatny + CI/CD)
+# tgdoctor — stan pracy, 2026-10-19 (dynamiczna allowlista + naprawa CI)
 
-## Bieżące zadanie — zweryfikowano funkcje, dodano fail-closed allowlistę, wdrożono CI/CD i opublikowano repo
+## Bieżące zadanie — dodano dynamiczne dopuszczanie użytkowników z menu bota
+
+Zadanie użytkownika: opcja dodawania użytkowników „dynamicznie” przez menu bota
+do allowlisty (decyzja o implementacji — config.yml watch czy SQLite — powierzona
+agentowi). Wybrano **SQLite** (brak nowej zależności, atomowe zapisy, natychmiastowy
+efekt bez watcherów i wyścigów częściowego zapisu).
+
+### Model dostępu
+
+- **Operatorzy** = statyczna lista `ALLOWED_USER_IDS` (bez zmian: wymagana,
+  fail-closed, `require_run_settings`). Zmiana wymaga edycji `.env` + restartu.
+- **Użytkownicy** = tabela `allowed_users` w nowym pliku SQLite
+  `allowlist.sqlite3` w katalogu danych (`/data`). Operatorzy dodają/usuwają ich
+  z menu bota: **Użytkownicy → Dodaj użytkownika** (podanie ID) oraz
+  **Usuń <id>** (callback `user-del:<nonce>:<id>`).
+- Członkostwo = operatorzy ∪ SQLite, sprawdzane **przy każdej wiadomości**
+  (`Bot.allowed`) — zmiany działają natychmiast, bez restartu.
+- Przycisk Użytkownicy i wszystkie akcje zarządzania strzeżone flagą
+  `Session.admin` (tylko operatorzy); zwykli użytkownicy nie zarządzają listą.
+  Operatorów nie da się usunąć z bota (tylko `.env`). Handler błędów pomija
+  nieuprawnionych wg tej samej sumy zbiorów.
+
+### Zmienione pliki
+
+- Nowy `src/tgdoctor/allowlist.py` (`Allowlist`, `AllowlistEntry`; WAL,
+  busy_timeout, `user_version` jak w katalogu) + test
+  `tests/unit/tgdoctor/test_allowlist.py` (4 testy).
+- `src/tgdoctor/bot.py`: `Bot.__init__(catalog, settings, allowlist, …)`,
+  `allowed()`, `Session.admin`, przycisk Użytkownicy w menu, metody
+  `users`/`user_add_prompt`/`user_added`, callbacki `users`/`user-add`/`user-del`,
+  tryb tekstowy `user-id`, zaktualizowany komunikat odmowy i tekst prywatności
+  (baza przechowuje wyłącznie identyfikatory dopuszczonych + autora i datę).
+- `src/tgdoctor/cli.py`: `Allowlist` inicjalizowany tylko dla `run`.
+- `tests/conftest.py`: fixture `allowlist`; `test_bot.py`: 6 nowych testów
+  (menu admin-only, dostęp z bazy, przepływ dodawania, walidacja ID, blokada
+  dla nie-adminów, pełny dispatch PTB z realnym mock transportem, w tym
+  natychmiastowe przyjęcie nowego użytkownika i usunięcie z listy).
+
+### Walidacja — rzeczywiste wyniki (2026-10-19)
+
+- `ruff check` / `ruff format --check` / `ty check` czyste; **93 testy PASS**
+  (wcześniej 83). Pełna bramka = dokładnie `validate.yml`.
+- Docs zaktualizowane w tej samej zmianie: README (sekcja „Zarządzanie
+  użytkownikami z menu bota”, tabela konfiguracji, prywatność), TECHNICAL
+  (sekcja „Allowlista dynamiczna”), AGENTS (liczba testów), ten HANDOFF.
+
+### Naprawa CI z 2026-10-19 (wcześniejsza w tej sesji)
+
+- Run 39195531196 („Update build tools”, schedule) padł: `docker compose config`
+  w `update-tools.yml` wymaga teraz `ALLOWED_USER_IDS` (fail-closed z 10-18).
+  Fix: `ALLOWED_USER_IDS=123456789` w kroku walidacji Compose.
+- Run 39308223130 padł dalej: (a) `rg` nie istnieje na runnerze ubuntu-26.04 —
+  guard open-PR przepisany na czyste `--jq`/`[ -ge 1 ]`; (b) „GitHub Actions
+  is not permitted to create or approve pull requests” — włączone przez API
+  (`actions/permissions/workflow`: `can_approve_pull_request_reviews=true`,
+  `default_workflow_permissions=read` bez zmian).
+- Weryfikacja runem 39308559895: pełny sukces, workflow otworzył **PR #1**
+  „deps: update build tools” (https://github.com/mlshdev/tgdoctor/pull/1,
+  czeka na ręczny merge). Sierota-gałąź `automation/build-tools-39308223130`
+  usunięta.
+
+## Poprzedni stan — 2026-10-18 (przełącznik prywatny + CI/CD)
 
 Zadanie użytkownika: sprawdzić wszystkie funkcje bota, dopisać testy, dodać
 „przełącznik”, po którym bot działa **wyłącznie** z podanymi użytkownikami

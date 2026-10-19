@@ -10,6 +10,7 @@ from pathlib import Path
 import httpx
 from telegram.error import TelegramError
 
+from tgdoctor.allowlist import Allowlist
 from tgdoctor.bot import Bot
 from tgdoctor.catalog import Catalog
 from tgdoctor.httpserver import start_server
@@ -78,9 +79,11 @@ def main() -> None:
         elif args.command == "run":
             require_run_settings(settings)
             with exclusive(settings.data_dir / "bot.lock"):
+                allowlist = Allowlist(settings.data_dir / "allowlist.sqlite3")
+                allowlist.initialize()
                 server, thread = start_server(settings.http_host, settings.http_port, catalog)
                 try:
-                    Bot(catalog, settings).application().run_polling(
+                    Bot(catalog, settings, allowlist).application().run_polling(
                         allowed_updates=["message", "callback_query"],
                         drop_pending_updates=False,
                     )

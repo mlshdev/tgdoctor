@@ -28,6 +28,7 @@ from telegram.ext import (
 )
 from telegram.request import BaseRequest
 
+from tgdoctor.allowlist import Allowlist
 from tgdoctor.catalog import Catalog
 from tgdoctor.importer import Importer
 from tgdoctor.ktomalek import (
@@ -108,6 +109,7 @@ class AvailabilityFlow:
 class Session:
     query: Search = field(default_factory=Search)
     awaiting: str = ""
+    admin: bool = False
     nonce: str = field(default_factory=lambda: secrets.token_hex(4))
     results: list[ProductSummary] = field(default_factory=list)
     detail: tuple[Dataset, str] | None = None
@@ -140,9 +142,11 @@ def menu(session: Session) -> InlineKeyboardMarkup:
             [("Sprawdź w aptece", "apteka")],
             [("Także skasowane: " + ("NIE" if session.query.active_only else "TAK"), "deleted")],
             [("Wyczyść filtry", "reset"), ("Źródła i aktualność", "status")],
-            [("Prywatność", "privacy")],
         ]
     )
+    if session.admin:
+        rows.append([("Użytkownicy", "users")])
+    rows.append([("Prywatność", "privacy")])
     return keyboard(rows)
 
 
@@ -151,10 +155,12 @@ class Bot:
         self,
         catalog: Catalog,
         settings: Settings,
+        allowlist: Allowlist,
         ktomalek: KtomalekClient | None = None,
     ) -> None:
         self.catalog = catalog
         self.settings = settings
+        self.allowlist = allowlist
         self.ktomalek = ktomalek if ktomalek is not None else KtomalekClient()
         self.sessions: OrderedDict[int, Session] = OrderedDict()
         self.import_task: asyncio.Task[None] | None = None
@@ -174,15 +180,18 @@ class Bot:
                 link_preview_options=LinkPreviewOptions(is_disabled=True),
             )
 
+    def allowed(self, user_id: int) -> bool:
+        return user_id in self.settings.allowed_user_ids or self.allowlist.is_allowed(user_id)
+
     async def session(self, update: Update) -> Session | None:
         user = update.effective_user
         if not user or not update.effective_chat or update.effective_chat.type != "private":
             return None
-        if user.id not in self.settings.allowed_user_ids:
+        if not self.allowed(user.id):
             await self.send(
                 update,
                 f"Ten bot jest prywatny. Brak uprawnień. Twój identyfikator: {user.id} — "
-                "może go dodać operator do ALLOWED_USER_IDS.",
+                "może go dodać operator przez menu bota (Użytkownicy) lub ALLOWED_USER_IDS.",
             )
             return None
         current = monotonic()
@@ -193,6 +202,7 @@ class Bot:
             del self.sessions[key]
         session = self.sessions.setdefault(user.id, Session())
         self.sessions.move_to_end(user.id)
+        session.admin = user.id in self.settings.allowed_user_ids
         session.touched = current
         if current - session.last_request < 0.7:
             return None
@@ -445,6 +455,60 @@ class Bot:
             self.apteka_results_keyboard(session, 0),
         )
 
+    async def users(self, update: Update, session: Session) -> None:
+        if not session.admin:
+            return
+        session.awaiting = ""
+        entries = self.allowlist.entries()
+        operators = ", ".join(str(i) for i in sorted(self.settings.allowed_user_ids))
+        lines = [f"Operatorzy (ALLOWED_USER_IDS, statyczni): {operators}"]
+        if entries:
+            lines.extend(
+                f"• {entry.user_id} — dodał {entry.added_by},"
+                f" {entry.added_at[:19].replace('T', ' ')}"
+                for entry in entries
+            )
+        else:
+            lines.append("Brak dodatkowych użytkowników.")
+        session.nonce = secrets.token_hex(4)
+        rows: list[list[tuple[str, str]]] = [[("Dodaj użytkownika", "user-add")]]
+        rows.extend(
+            [(f"Usuń {entry.user_id}", f"user-del:{session.nonce}:{entry.user_id}")]
+            for entry in entries
+        )
+        rows.append([("Menu", "home")])
+        await self.send(update, "\n".join(lines), keyboard(rows))
+
+    async def user_add_prompt(self, update: Update, session: Session) -> None:
+        if not session.admin:
+            return
+        session.awaiting = "user-id"
+        await self.send(
+            update,
+            "Podaj numeryczny identyfikator Telegram nowego użytkownika "
+            "(np. z komunikatu odmowy bota lub od @userinfobot).",
+            keyboard([[("Anuluj", "users")]]),
+        )
+
+    async def user_added(self, update: Update, session: Session, value: str) -> None:
+        if not session.admin:
+            return
+        session.awaiting = ""
+        if not value.isascii() or not value.isdigit():
+            await self.send(update, "Podaj sam identyfikator: dodatnią liczbę, tylko cyfry.")
+            return
+        identifier = int(value)
+        if identifier <= 0 or identifier >= 2**63:
+            await self.send(update, "Identyfikator musi być dodatnią liczbą.")
+            return
+        if identifier in self.settings.allowed_user_ids:
+            await self.send(update, "Ten identyfikator jest już operatorem.")
+            return
+        added_by = update.effective_user.id if update.effective_user else 0
+        if not self.allowlist.add(identifier, added_by):
+            await self.send(update, "Ten użytkownik jest już na liście.")
+        await self.users(update, session)
+
     def apteka_results_keyboard(self, session: Session, offset: int) -> InlineKeyboardMarkup:
         flow = session.apteka
         pharmacies = flow.pharmacies if flow else []
@@ -477,7 +541,9 @@ class Bot:
             "szyfrowana end-to-end. Operator bota otrzymuje zapytania i identyfikator Telegram.\n"
             "Sesje i filtry są tylko w RAM, wygasają po 30 minutach bezczynności; "
             "limit 5000 sesji. Sprzątanie pamięci co minutę. "
-            "Brak zapisu historii zapytań i identyfikatorów w bazie lub logach aplikacji. "
+            "Brak zapisu historii zapytań w bazie lub logach aplikacji; wyjątkiem jest "
+            "lista dopuszczonych użytkowników w SQLite — sam identyfikator Telegram, "
+            "autor dodania i data; bez danych wrażliwych. "
             "/usun — usuń sesję."
         )
 
@@ -499,6 +565,9 @@ class Bot:
             return
         if mode == "apteka-city":
             await self.apteka_city(update, session, value)
+            return
+        if mode == "user-id":
+            await self.user_added(update, session, value)
             return
         try:
             data = session.query.model_dump()
@@ -649,6 +718,17 @@ class Bot:
                 return
             flow.location = flow.locations[int(index)]
             await self.apteka_offers(update, session)
+        elif action == "users":
+            await self.users(update, session)
+        elif action == "user-add":
+            await self.user_add_prompt(update, session)
+        elif action == "user-del":
+            nonce, _, raw = value.partition(":")
+            if nonce != session.nonce or not raw.isdigit() or not self.allowlist.remove(int(raw)):
+                await self.send(update, "Ten przycisk wygasł. Użyj bieżącego menu.", menu(session))
+                return
+            session.nonce = secrets.token_hex(4)
+            await self.users(update, session)
         elif action == "apage":
             nonce, _, index = value.partition(":")
             flow = session.apteka
@@ -736,7 +816,7 @@ class Bot:
         if not isinstance(update, Update):
             return
         user = update.effective_user
-        if user is not None and user.id not in self.settings.allowed_user_ids:
+        if user is not None and not self.allowed(user.id):
             return
         try:
             await self.send(update, "Wystąpił błąd. Spróbuj ponownie lub użyj /start.")
