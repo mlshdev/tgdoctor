@@ -41,7 +41,8 @@ jobs:
         run: |
           set -euo pipefail
           if git diff --quiet; then exit 0; fi
-          if gh pr list --state open --json title --jq '[.[] | select(.title == "deps: update build tools")] | length' | rg -q '^[1-9]'; then exit 0; fi
+          open_updates="$(gh pr list --state open --json title --jq '[.[] | select(.title == "deps: update build tools")] | length')"
+          if [ "${open_updates}" -ge 1 ]; then exit 0; fi
           git switch -c "automation/build-tools-${{ github.run_id }}"
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
