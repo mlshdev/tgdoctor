@@ -31,7 +31,7 @@ jobs:
       - name: Validate image and Compose
         run: |
           docker build --pull --platform linux/amd64 --tag docker.io/local/tgdoctor:update .
-          TELEGRAM_BOT_TOKEN=validation-only docker compose -p dev-tgdoctor-ci config --quiet
+          TELEGRAM_BOT_TOKEN=validation-only ALLOWED_USER_IDS=123456789 docker compose -p dev-tgdoctor-ci config --quiet
       - uses: ./.github/actions/validate-image
         with:
           image: "docker.io/local/tgdoctor:update"

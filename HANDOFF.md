@@ -70,6 +70,11 @@ Wcześniej lista była opcjonalna, a pusta lista oznaczała publicznego bota
   odpadów to debconf/dpkg w warstwach bazowego
   `python:3.14-slim-trixie` (nieusuwalne z naszego Dockerfile, nasze etapy
   dokładają <1%), run 39152921849 padł na 9,01% > 5%.
+- Naprawa 2026-10-19: `update-tools.yml` sprawdza `docker compose config`
+  z pełnym zestawem zmiennych interpolacyjnych — po dodaniu fail-closed
+  `ALLOWED_USER_IDS:?` w `compose.yml` run 39195531196 padł na brak tej
+  zmiennej; kroku walidacji brakowało `ALLOWED_USER_IDS=123456789`
+  (obok `TELEGRAM_BOT_TOKEN=validation-only`).
 
 ## Stan zasobów po testach
 
