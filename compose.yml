@@ -26,7 +26,12 @@ services:
         read_only: false
         bind:
           create_host_path: false
-      - "./bot/config:/config:ro"
+      - type: "bind"
+        source: "./bot/config"
+        target: "/config"
+        read_only: true
+        bind:
+          create_host_path: false
     tmpfs:
       - "/tmp:rw,noexec,nosuid,nodev,mode=1777"
     ports:

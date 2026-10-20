@@ -1,4 +1,29 @@
-# tgdoctor — stan pracy, 2026-10-19 (dynamiczna allowlista + naprawa CI)
+# tgdoctor — stan pracy, 2026-10-20 (automatyczne katalogi bind mount)
+
+## Bieżące zadanie — katalogi bez ręcznego mkdir/chown
+
+Użytkownik chce używać `bot/config` i `bot/data` bez tworzenia katalogów ani
+ustawiania ich właściciela ręcznie; konto na VM ma UID/GID 1000. Git śledzi
+`bot/config/.gitkeep` i `bot/data/.gitkeep`, więc clone tworzy oba katalogi.
+`compose.yml` ma `create_host_path: false` dla obu bind mountów; brak źródła
+powoduje błąd zamiast utworzenia katalogu root-owned. `Catalog.initialize()`
+ustawia uprawnienia katalogu danych na 0700 przed zapisem SQLite. README usuwa
+`sudo install`; przepis `rsync` na `homevm` używa `--no-owner`, `--no-group`
+i `--no-perms`, by nie kopiować UID/GID 501 z Maca. `TECHNICAL.md` opisuje
+założenia i zachowanie przy istniejących danych; żadna ścieżka danych nie
+została zmieniona i nic z niej nie usunięto.
+
+Weryfikacja: na oddzielnej tymczasowej ścieżce `homevm` kopia przez `rsync`
+utworzyła `bot/config` i `bot/data` z UID/GID 1000 i trybem 0755; testowa
+ścieżka została usunięta. `uv run pytest tests/unit/tgdoctor/test_catalog.py`
+przed zmianą kodu padał na teście 0700, po zmianie przechodzi. Pełna lokalna
+bramka `ruff check` / `ruff format --check` / `ty check` / `pytest` przechodzi
+(94 testy). `docker compose config` przechodzi, oba mounty mają
+`create_host_path: false`, config jest read-only. Build etapu `validation`
+na `homevm` (`docker build --platform linux/amd64 --target validation .`)
+przechodzi (94 testy).
+
+## Poprzednie zadanie — dynamiczna allowlista i naprawa CI
 
 ## Bieżące zadanie — dodano dynamiczne dopuszczanie użytkowników z menu bota
 

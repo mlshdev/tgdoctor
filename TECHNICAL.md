@@ -207,12 +207,17 @@ rate limitów i świadomie skonfigurowanego prywatnego listenera/proxy.
 
 Multi-stage build, Debian Trixie slim, UID/GID 1000, read-only rootfs,
 `cap_drop: [ALL]`, puste `cap_add`, `no-new-privileges`, loopback ingress.
-`/data` jest jedynym trwałym zapisywalnym mountem, `/tmp` to tmpfs. Dla `/data`
-celowo użyto długiej składni bind mount z `create_host_path: false`, aby błędna
-ścieżka nie tworzyła pustego katalogu na zdalnym hoście. `bot/config` to read-only
-pliki wejściowe operatora (drop-point `devices.json` dla importu wyrobów; pusty
-w gicie z założenia). Logi aplikacji na stdout jako JSON; rotacja `json-file`
-10 MB × 3. Nie zapisujemy logów do plików ani nie montujemy engine socket.
+`/data` jest jedynym trwałym zapisywalnym mountem, `/tmp` to tmpfs. Oba katalogi
+bind mount (`bot/data`, `bot/config`) są tworzone przez Git z `.gitkeep` na VM
+użytkownika UID/GID 1000, bez ręcznego `mkdir`/`chown`. `Catalog.initialize`
+ustawia `0700` na katalogu danych przed otwarciem SQLite. Oba mounty używają
+`create_host_path: false`: brak katalogu to błąd, nie ciche utworzenie
+root-owned ścieżki na zdalnym hoście. Przy kopiowaniu z Maca `rsync` wyłącza
+przenoszenie właściciela, grupy i trybu plików, zachowując dane w `bot/data`.
+`bot/config` to read-only pliki wejściowe operatora (drop-point `devices.json`
+dla importu wyrobów; pusty w gicie z założenia). Logi aplikacji na stdout
+jako JSON; rotacja `json-file` 10 MB × 3. Nie zapisujemy logów do plików ani
+nie montujemy engine socket.
 Token jest redagowany w formatterze; biblioteczne logi HTTP są wyłączone.
 
 Pojedyncza VM oznacza przerwę przy aktualizacji, awarii hosta/dysku lub strefy.

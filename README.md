@@ -71,17 +71,26 @@ potwierdź telefonicznie lub w aptece. To nie jest porada medyczna.
    Telegrama sprawdzisz przez @userinfobot albo w komunikacie odmowy bota
    (bot podaje go w odpowiedzi). Nie publikuj tokenu ani nie wklejaj go
    do czatu z asystentem.
-3. Przygotuj uprawnienia katalogu danych i uruchom kontener:
+3. Uruchom kontener z katalogu sklonowanego repozytorium:
 
 ```sh
 cp .env.example .env
 # Edytuj .env przed uruchomieniem.
-sudo install -d -o 1000 -g 1000 -m 0700 bot/data
 chmod 600 .env
 docker compose -p tgdoctor config --quiet
 docker compose -p tgdoctor up -d --build --wait
 docker compose -p tgdoctor logs --tail 50 bot
 ```
+
+Nie twórz katalogów ręcznie: `bot/data` i `bot/config` powstają przy klonowaniu
+repozytorium dzięki śledzonym plikom `.gitkeep`. Na VM użytkownik klonujący
+repozytorium ma UID/GID `1000:1000`, tak samo jak proces w kontenerze, więc
+`/data` jest od razu zapisywalne; przy starcie bot sam ogranicza uprawnienia
+`bot/data` do `0700`. Compose **nie** tworzy brakujących katalogów
+ani nie zmienia właściciela istniejących danych: błędna ścieżka kończy się
+błędem zamiast utworzyć pusty katalog należący do root. Jeżeli istniejące
+`bot/data` należy do innego UID, zachowaj dane i napraw uprawnienia świadomie
+przed uruchomieniem (nie nadpisuj ani nie usuwaj bazy SQLite).
 
 Bot korzysta z long pollingu: **nie potrzebuje publicznego portu, domeny,
 certyfikatu TLS ani load balancera**. Potrzebuje wychodzącego HTTPS do Telegrama,
@@ -102,12 +111,15 @@ projektu testowego:
 ```sh
 docker context show
 docker version --format '{{.Server.Version}} {{.Server.Arch}}'
-rsync -a --mkpath --exclude .git --exclude .venv --exclude .env \
+rsync -a --no-owner --no-group --no-perms --mkpath \
+  --exclude .git --exclude .venv --exclude .env \
   --exclude '*/data/*' --exclude '*/logs/*' ./ homevm:dev/tgdoctor/
 ```
 
 Utwórz `.env` **na VM** (np. przez SSH), nie umieszczaj sekretu w historii komend.
-Na VM sprawdź UID właściciela `bot/data` (`1000:1000`), następnie:
+`rsync` nie przenosi UID/GID ani uprawnień z Maca; nowe katalogi na VM
+powstają z właścicielem zalogowanego użytkownika (`1000:1000`). Nie usuwa
+zawartości istniejącego `bot/data`. Następnie:
 
 ```sh
 ssh homevm 'cd dev/tgdoctor && docker compose -p dev-tgdoctor up -d --build --wait'

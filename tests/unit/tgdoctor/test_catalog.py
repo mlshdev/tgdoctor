@@ -1,4 +1,5 @@
 import sqlite3
+import stat
 from datetime import timedelta
 from pathlib import Path
 
@@ -9,6 +10,18 @@ from tgdoctor.catalog import Catalog
 from tgdoctor.models import Attempt, Dataset, Search, now
 from tgdoctor.normalize import alternatives, normalize
 from tgdoctor.sources import SourceError
+
+
+def test_initialize_restricts_existing_data_directory(tmp_path: Path) -> None:
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(mode=0o755)
+    data_dir.chmod(0o755)
+    catalog = Catalog(data_dir / "catalog.sqlite3")
+
+    catalog.initialize()
+
+    assert stat.S_IMODE(data_dir.stat().st_mode) == 0o700
+    assert catalog.path.exists()
 
 
 @pytest.mark.parametrize(
