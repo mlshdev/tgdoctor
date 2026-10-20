@@ -74,6 +74,16 @@ efekt bez watcherów i wyścigów częściowego zapisu).
   „deps: update build tools” (https://github.com/mlshdev/tgdoctor/pull/1,
   czeka na ręczny merge). Sierota-gałąź `automation/build-tools-39308223130`
   usunięta.
+- 2026-10-20: PR #1 scalony (admin merge — wymagane checki nie biegają na
+  PR-ach z `GITHUB_TOKEN`); czysto, bo dotykał wyłącznie `uv.lock`
+  (bumpy transitywne, np. certifi 2026.7.22 → 2026.10.18). Gałąź usunięta.
+- 2026-10-20 porządek stacka: usunięto martwy `bot/logs/` (nigdy montowany,
+  logi → stdout/`json-file`), `.gitignore` ignoruje `bot/config/*` poza
+  `.gitkeep` (drop-point `devices.json` — pusty w gicie z założenia).
+- 2026-10-20 pin uv 0.13.1 → 0.13.3 (`required-version` + obraz
+  `ghcr.io/astral-sh/uv:0.13.3` w Dockerfile): Homebrew wydał 0.13.3 i pin
+  `==0.13.1` blokował każde lokalne `uv run`. Czwartkowy `update-tools`
+  posuwa pin dalej z walidacją CI.
 
 ## Poprzedni stan — 2026-10-18 (przełącznik prywatny + CI/CD)
 
