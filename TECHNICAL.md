@@ -273,8 +273,8 @@ Zmiana kontraktu, filtra, importu lub menu wymaga testu regresyjnego.
 oraz poniedziałek/czwartek 00:00 UTC. Pełne testy, build natywny amd64,
 read-only smoke test i dive przed publikacją. Cron wymusza `pull` i `no-cache`,
 co odświeża także mutable warstwy bazowego obrazu. Publikacja do GHCR tylko poza
-PR, po walidacji; tag `v0.1.0` daje `:0.1.0`, main daje `:edge` i pełny SHA.
-W produkcji wybieraj stabilny release, nie `edge` ani digest w Compose.
+PR, po walidacji; tag `v0.1.0` daje `:0.1.0`, main daje `:latest` i pełny SHA.
+W produkcji wybieraj stabilny release, nie `latest` ani digest w Compose.
 
 Dependabot: uv, Docker i GitHub Actions, grupowanie per ekosystem, wszystkie
 stabilne wersje, dwa razy w tygodniu. Osobny `update-tools.yml` sprawdza build
@@ -319,4 +319,4 @@ odpowiedzi API, bez prawdziwego tokenu; integracja ktomalek jest testowana
 na fixture'ach z realnych przechwyceń. Nie przetestowano fizycznego
 restartu VM, rootless Docker, Podman ani Kubernetes. Repozytorium publiczne
 `mlshdev/tgdoctor`: workflow CI uruchamiają się po pushu, obraz main publikuje
-się do GHCR; wybieraj w Compose stabilny release, nie `edge`.
+się do GHCR; wybieraj w Compose stabilny release, nie `latest`.

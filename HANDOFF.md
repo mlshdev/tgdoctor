@@ -138,7 +138,8 @@ Wcześniej lista była opcjonalna, a pusta lista oznaczała publicznego bota
 
 - `validate.yml`: PR/push main/tag/harmonogram (pn/czw 00:00 UTC) — pełne
   testy, natywny build amd64, smoke, dive; publikacja do GHCR tylko poza PR
-  (tag `v*` → wersja, main → `edge` + pełny SHA).
+  (tag `v*` → wersja, main → `latest` + pełny SHA; 2026-10-20 zmieniono
+  z `:edge` na `:latest` po decyzji użytkownika).
 - `update-tools.yml`: pn/czw aktualizacja uv/hatchling, pełna walidacja
   przed otwarciem PR (merge ręczny).
 - `dependabot.yml`: uv/docker/github-actions, pn/czw, grupowanie.
