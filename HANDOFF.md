@@ -55,6 +55,13 @@ efekt bez watcherów i wyścigów częściowego zapisu).
 
 ### Naprawa CI z 2026-10-19 (wcześniejsza w tej sesji)
 
+- Porządek z 2026-10-19: usunięto martwy `bot/logs/` (nic go nie montuje,
+  logi → stdout/`json-file`; pozostał po generycznym szablonie stacka), dodano
+  `bot/config/*` + `!bot/config/.gitkeep` do `.gitignore` (plik operatora
+  `devices.json` nie ma prawa być niezignorowanym szumem do commitu). `bot/config`
+  pozostaje — to drop-point importu wyrobów (`/config` ro); pusty w gicie
+  z założenia.
+
 - Run 39195531196 („Update build tools”, schedule) padł: `docker compose config`
   w `update-tools.yml` wymaga teraz `ALLOWED_USER_IDS` (fail-closed z 10-18).
   Fix: `ALLOWED_USER_IDS=123456789` w kroku walidacji Compose.

@@ -144,7 +144,10 @@ katalogu pozyskanego legalnie przez operatora, np. od uprawnionego dostawcy.
 EUDAMED nie dowodzi sam w sobie dostępności konkretnego wyrobu w polskiej aptece.
 
 Umieść plik w `bot/config/devices.json`, zgodny z `DeviceFeed` w
-`src/tgdoctor/models.py`. Wymagane pola:
+`src/tgdoctor/models.py`. Katalog `bot/config` jest celowo pusty w repozytorium:
+plik dostarczasz na hoście, kontener widzi go przez read-only bind mount
+(`bot/config` → `/config`) — bot odczytuje plik wyłącznie podczas importu
+i nigdy tam nie zapisuje. Wymagane pola:
 
 - katalog: `asOf` (YYYY-MM-DD), `sourceUrl` (HTTPS), `license`, `reviewedBy`, `devices`;
 - każdy wyrób: `id` (tekst), `name`, `manufacturer`, `country: "PL"`,

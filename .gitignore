@@ -13,6 +13,8 @@ AGENTS.local.md
 # Docker stack runtime
 */logs/*
 !*/logs/.gitkeep
+bot/config/*
+!bot/config/.gitkeep
 bot/data/*
 !bot/data/.gitkeep
 backups/

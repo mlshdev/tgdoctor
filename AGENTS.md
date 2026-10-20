@@ -29,10 +29,10 @@ Dockerfile                # root; stages: uv → builder → validation → runt
 compose.yml               # local stack: one bot service, loopback 127.0.0.1:3000
 .dockerignore
 .dive-ci                   # dive thresholds: efficiency ≥ 0.95, user-wasted ≤ 10% (base-image debconf/dpkg churn dominates)
-bot/config  bot/data  bot/logs   # bind-mount sources (.gitkeep) — runtime state, never source
+bot/config  bot/data   # bind-mount sources (.gitkeep) — runtime state, never source
 ```
 
-- `src/tgdoctor/bot.py` is the bot source; the root `bot/` directory is only Compose bind-mount state (`bot/data` → `/data` SQLite, `bot/config` → `/config` read-only).
+- `src/tgdoctor/bot.py` is the bot source; the root `bot/` directory is only Compose bind-mount state (`bot/data` → `/data` SQLite, `bot/config` → `/config` read-only drop-point for the operator's optional `devices.json` import — empty in git by design, the feed is licensed runtime data).
 - The `validation` stage runs `ruff check` / `ruff format --check` / `ty check` / `pytest` in-container; the runtime image carries none of it.
 - CI: `.github/workflows/validate.yml` (PR/push/schedule gate + image build, push on non-PR) and `update-tools.yml` (twice-weekly tool-pin updates → PR); container smoke + dive via `.github/actions/validate-image/action.yml`.
 

@@ -210,8 +210,9 @@ Multi-stage build, Debian Trixie slim, UID/GID 1000, read-only rootfs,
 `/data` jest jedynym trwałym zapisywalnym mountem, `/tmp` to tmpfs. Dla `/data`
 celowo użyto długiej składni bind mount z `create_host_path: false`, aby błędna
 ścieżka nie tworzyła pustego katalogu na zdalnym hoście. `bot/config` to read-only
-pliki wejściowe operatora. Logi aplikacji na stdout jako JSON; rotacja `json-file`
-10 MB × 3. Nie zapisujemy kopii logów do `bot/logs` ani nie montujemy engine socket.
+pliki wejściowe operatora (drop-point `devices.json` dla importu wyrobów; pusty
+w gicie z założenia). Logi aplikacji na stdout jako JSON; rotacja `json-file`
+10 MB × 3. Nie zapisujemy logów do plików ani nie montujemy engine socket.
 Token jest redagowany w formatterze; biblioteczne logi HTTP są wyłączone.
 
 Pojedyncza VM oznacza przerwę przy aktualizacji, awarii hosta/dysku lub strefy.
