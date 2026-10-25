@@ -291,7 +291,8 @@ aktualizuje `tool.uv.required-version` i etap uv w Dockerfile razem. Dive w CI
 pochodzi z aktualnego stabilnego wydania GitHub pobranego przez `gh`.
 
 PR-y Dependabota włączone są w auto-merge przez `dependabot-automerge.yml`
-(`gh pr merge --auto --merge` tylko po poprawnej weryfikacji `fetch-metadata`);
+(`gh pr merge --auto --merge` tylko jeśli wszystkie commity PR-u są podpisane
+przez Dependabota, HEAD jest aktualny, a `fetch-metadata` zwróci metadane);
 PR z dodatkowym commitem człowieka wymaga ręcznego scalenia. Auto-merge działa
 dopiero, gdy wymagane checki ochrony gałęzi (`validate`, `image`) są zielone —
 ochrona `main` jest włączona przez API (`strict`, `enforce_admins=false`:

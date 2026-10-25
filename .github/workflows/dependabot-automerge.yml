@@ -13,11 +13,30 @@ jobs:
     timeout-minutes: 15
     if: github.event.pull_request.user.login == 'dependabot[bot]'
     steps:
+      - name: Verify Dependabot commits
+        id: commits
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          pr="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+          current_head="$(jq -r '.head.sha' <<< "${pr}")"
+          expected_commits="$(jq -r '.commits' <<< "${pr}")"
+          if [ "${current_head}" != "${PR_HEAD_SHA}" ]; then exit 0; fi
+          trusted="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/commits?per_page=100" |
+            jq -r --arg head "${current_head}" --argjson expected "${expected_commits}" \
+              '[.[][]] as $commits | ($commits | length) == $expected and $expected > 0 and
+               $commits[-1].sha == $head and
+               all($commits[]; .author.login == "dependabot[bot]" and .commit.verification.verified == true)')"
+          if [ "${trusted}" = "true" ]; then echo 'trusted=true' >> "${GITHUB_OUTPUT}"; fi
       - uses: dependabot/fetch-metadata@v3.1.0
+        if: steps.commits.outputs.trusted == 'true'
         id: metadata
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
-      - if: steps.metadata.outputs.package-ecosystem != ''
+      - if: steps.commits.outputs.trusted == 'true' && steps.metadata.outputs.package-ecosystem != ''
         run: gh pr merge --auto --merge "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
