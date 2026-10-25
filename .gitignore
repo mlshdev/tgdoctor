@@ -9,6 +9,7 @@ AGENTS.local.md
 .aider*
 .headroom/
 .playwright-mcp/
+/chathistoiry/
 
 # Docker stack runtime
 */logs/*

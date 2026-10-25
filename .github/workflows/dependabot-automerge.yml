@@ -17,7 +17,8 @@ jobs:
         id: metadata
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
-      - run: gh pr merge --auto --merge "$PR_URL"
+      - if: steps.metadata.outputs.package-ecosystem != ''
+        run: gh pr merge --auto --merge "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
