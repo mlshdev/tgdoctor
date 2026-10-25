@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 import secrets
 from collections import OrderedDict
 from contextlib import suppress
@@ -57,6 +58,41 @@ from tgdoctor.settings import Settings
 from tgdoctor.sources import SourceError
 
 LOGGER = logging.getLogger(__name__)
+
+STRENGTH_SUFFIX = re.compile(r"^(.+?)\s+(\d+(?:[,.]\d+)?)\s*((?:mcg|µg|mg|g)(?:/ml)?|ml)$", re.I)
+STRENGTH_PREFIX = re.compile(
+    r"^\s*(\d+(?:[,.]\d+)?)\s*((?:mcg|µg|mg|g)(?:/ml)?|ml)(?=\s*(?:\||$))",
+    re.I,
+)
+
+
+def parse_apteka_query(value: str) -> tuple[str, str | None]:
+    match = STRENGTH_SUFFIX.fullmatch(value.strip())
+    if match is None:
+        return value.strip(), None
+    name, amount, unit = match.group(1, 2, 3)
+    if not isinstance(name, str) or not isinstance(amount, str) or not isinstance(unit, str):
+        return value.strip(), None
+    return name.strip(), f"{amount} {unit}"
+
+
+def apteka_strength_matches(product: KtomalekProduct, strength: str) -> bool:
+    wanted = STRENGTH_PREFIX.match(strength)
+    offered = STRENGTH_PREFIX.match(product.dose_line)
+    if wanted is None or offered is None:
+        return False
+    amount, unit = wanted.group(1, 2)
+    offered_amount, offered_unit = offered.group(1, 2)
+    if (
+        not isinstance(amount, str)
+        or not isinstance(unit, str)
+        or not isinstance(offered_amount, str)
+        or not isinstance(offered_unit, str)
+    ):
+        return False
+    return amount.replace(".", ",") == offered_amount.replace(".", ",") and (
+        unit.casefold() == offered_unit.casefold()
+    )
 
 
 class BotContext(
@@ -204,7 +240,19 @@ class Bot:
         self.sessions.move_to_end(user.id)
         session.admin = user.id in self.settings.allowed_user_ids
         session.touched = current
-        if current - session.last_request < 0.7:
+        text = update.message.text if update.message is not None else None
+        words = text.split(maxsplit=1) if text is not None else []
+        command = words[0].split("@", maxsplit=1)[0] if words else ""
+        action = update.callback_query.data if update.callback_query is not None else None
+        recovery = command in (
+            "/start",
+            "/help",
+            "/menu",
+            "/wyczysc",
+            "/clear",
+            "/usun",
+        ) or action in ("home", "reset", "apteka-cancel")
+        if current - session.last_request < 0.7 and not recovery:
             return None
         session.last_request = current
         return session
@@ -212,15 +260,19 @@ class Bot:
     async def start(self, update: Update, context: BotContext) -> None:
         session = await self.session(update)
         if session:
+            session.awaiting = ""
+            session.apteka = None
+            session.nonce = secrets.token_hex(4)
             await self.send(
                 update,
                 "tgdoctor — polski katalog leków, surowców i zaimportowanych wyrobów.\n"
-                "Wpisz frazę lub wybierz filtr. Filtry łączą się; usuwa je „Wyczyść filtry”.\n"
-                "/apteka — sprawdź, gdzie kupić lek podany nazwą handlową "
-                "w wybranej miejscowości.\n"
+                "Wpisz nazwę leku lub substancji, np. nebivololum, albo wybierz filtr.\n"
+                "Przy wielu wynikach użyj Filtruj nazwę / Filtruj moc.\n"
+                "/apteka — podaj nazwę handlową i opcjonalnie moc (np. Nebicard 10 mg), "
+                "a potem miejscowość.\n"
                 "Domyślnie: preparaty ludzkie i nieskasowane opakowania.\n\n"
                 + NOTICE
-                + "\n\n/usun usuwa sesję. /prywatnosc — zasady prywatności.",
+                + "\n\n/wyczysc czyści filtry; /usun usuwa sesję. /prywatnosc — prywatność.",
                 menu(session),
             )
 
@@ -231,6 +283,8 @@ class Bot:
             if len(text) > 160:
                 await self.send(update, "Zapytanie może mieć najwyżej 160 znaków.")
                 return
+            session.awaiting = ""
+            session.apteka = None
             session.query = Search(q=text)
             await self.results(update, session)
 
@@ -241,6 +295,23 @@ class Bot:
             context.application.drop_chat_data(update.effective_user.id)
             await self.send(
                 update, "Usunięto filtry i sesję z pamięci bota. Telegram zachowuje historię czatu."
+            )
+
+    @staticmethod
+    def reset_filters(session: Session) -> None:
+        session.query = Search()
+        session.awaiting = ""
+        session.apteka = None
+        session.results = []
+        session.detail = None
+        session.nonce = secrets.token_hex(4)
+
+    async def clear(self, update: Update, context: BotContext) -> None:
+        session = await self.session(update)
+        if session is not None:
+            self.reset_filters(session)
+            await self.send(
+                update, "Wyczyszczono filtry i przerwano bieżące wybieranie.", menu(session)
             )
 
     async def placeholder(self, update: Update, text: str) -> Message | None:
@@ -297,7 +368,8 @@ class Bot:
         session.awaiting = "apteka-name"
         await self.send(
             update,
-            "Podaj nazwę handlową leku, np. Apap.",
+            "Podaj nazwę handlową i opcjonalnie moc, np. Nebicard 10 mg. "
+            "Jeśli znasz tylko substancję, najpierw znajdź lek w katalogu.",
             keyboard([[("Anuluj", "apteka-cancel")]]),
         )
 
@@ -313,10 +385,14 @@ class Bot:
             self.apteka_city_keyboard(session),
         )
 
-    async def apteka_name(self, update: Update, session: Session, value: str) -> None:
+    async def apteka_name(
+        self, update: Update, session: Session, value: str, strength: str | None = None
+    ) -> None:
         if not value or len(value) > 160:
             await self.send(update, "Wpisz nazwę od 1 do 160 znaków.")
             return
+        name, parsed_strength = parse_apteka_query(value)
+        requested_strength = strength or parsed_strength
         if not self.apteka_allowed(session, 5.0):
             await self.send(update, "Sprawdzanie w aptekach jest możliwe raz na kilka sekund.")
             return
@@ -325,13 +401,14 @@ class Bot:
         session.awaiting = ""
         placeholder = await self.placeholder(update, "Sprawdzam nazwę leku…")
         try:
-            products = await self.ktomalek.products(value)
+            products = await self.ktomalek.products(name)
         except KtomalekError as exc:
             LOGGER.warning("apteka_products_failed", extra={"code": exc.code})
+            session.awaiting = "apteka-name"
             await self.finish(
                 update,
                 placeholder,
-                apteka_error_text(exc.code),
+                apteka_error_text(exc.code) + " Podaj nazwę ponownie lub wybierz Anuluj.",
                 keyboard([[("Anuluj", "apteka-cancel")]]),
             )
             return
@@ -345,8 +422,21 @@ class Bot:
                 keyboard([[("Anuluj", "apteka-cancel")]]),
             )
             return
+        warning = ""
+        if requested_strength is not None and requested_strength != "":
+            exact = [p for p in products if p.name.strip().casefold() == name.casefold()]
+            if exact:
+                products = exact
+            else:
+                warning = "Nie znaleziono dokładnej nazwy leku. "
+            matching = [p for p in products if apteka_strength_matches(p, requested_strength)]
+            if matching:
+                products = matching
+            else:
+                warning += f"Nie znaleziono mocy {requested_strength}. "
+        flow.products = products
         session.nonce = secrets.token_hex(4)
-        if len(products) == 1:
+        if len(products) == 1 and not warning:
             flow.product = products[0]
             session.awaiting = "apteka-city"
             await self.finish(
@@ -366,11 +456,14 @@ class Bot:
             ]
             for index, p in enumerate(products[:10])
         ]
-        rows.append([("Anuluj", "apteka-cancel")])
+        rows.append([("Zmień nazwę", "apteka"), ("Anuluj", "apteka-cancel")])
         await self.finish(
             update,
             placeholder,
-            f"Wybrana nazwa pasuje do {len(products)} leków. Wybierz lek:",
+            warning
+            + f"Znaleziono {len(products)} wariantów. Wybierz właściwy lek"
+            + (" (pokazano pierwsze 10)" if len(products) > 10 else "")
+            + " lub zmień nazwę:",
             keyboard(rows),
         )
 
@@ -598,6 +691,7 @@ class Bot:
             navigation.append(("Następne →", f"page:{session.nonce}:{offset + found.limit}"))
         if navigation:
             rows.append(navigation)
+        rows.append([("Filtruj nazwę", "mode:name"), ("Filtruj moc", "mode:strength")])
         rows.append([("Filtry / menu", "home"), ("Wyczyść", "reset")])
         datasets = {product.dataset for product in found.items}
         if not datasets:
@@ -649,6 +743,14 @@ class Bot:
             )
         if navigation:
             rows.append(navigation)
+        if product.dataset == Dataset.MEDICINAL and product.kind.casefold() == "ludzki":
+            rows.append(
+                [
+                    InlineKeyboardButton(
+                        "Apteki (ktomalek.pl)", callback_data=f"apteka-detail:{session.nonce}"
+                    )
+                ]
+            )
         rows.append(
             [
                 InlineKeyboardButton("Wyniki", callback_data="search"),
@@ -680,6 +782,22 @@ class Bot:
                 await self.detail(update, session)
             elif action == "packs" and position <= 10000:
                 await self.detail(update, session, position)
+        elif action == "apteka-detail":
+            if value != session.nonce or session.detail is None:
+                await self.send(update, "Ten przycisk wygasł. Użyj bieżącego menu.", menu(session))
+                return
+            dataset, identity = session.detail
+            product = await asyncio.to_thread(self.catalog.detail, dataset, identity)
+            if (
+                product is None
+                or dataset != Dataset.MEDICINAL
+                or product.kind.casefold() != "ludzki"
+            ):
+                await self.send(
+                    update, "Ten lek nie jest już dostępny w katalogu. Wyszukaj ponownie."
+                )
+                return
+            await self.apteka_name(update, session, product.name, strength=product.strength)
         elif action == "apteka":
             await self.apteka_prompt_name(update, session)
         elif action == "apteka-cancel":
@@ -774,10 +892,7 @@ class Bot:
         elif action in ("home", "reset", "deleted"):
             session.awaiting = ""
             if action == "reset":
-                session.query = Search()
-                session.nonce = secrets.token_hex(4)
-                session.results = []
-                session.detail = None
+                self.reset_filters(session)
             elif action == "deleted":
                 session.query = session.query.model_copy(
                     update={"active_only": not session.query.active_only}
@@ -858,6 +973,7 @@ class Bot:
                 ("start", "Menu i filtry"),
                 ("szukaj", "Nowe wyszukiwanie"),
                 ("apteka", "Sprawdź lek w aptekach"),
+                ("wyczysc", "Wyczyść filtry i anuluj wybieranie"),
                 ("status", "Źródła i aktualność"),
                 ("prywatnosc", "Zasady prywatności"),
                 ("usun", "Usuń sesję i filtry"),
@@ -899,6 +1015,7 @@ class Bot:
         application.add_handler(CommandHandler("prywatnosc", self.privacy))
         application.add_handler(CommandHandler("usun", self.forget))
         application.add_handler(CommandHandler("apteka", self.command_apteka))
+        application.add_handler(CommandHandler(["wyczysc", "clear"], self.clear))
         application.add_handler(CallbackQueryHandler(self.callbacks))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.text))
         application.add_error_handler(self.errors)

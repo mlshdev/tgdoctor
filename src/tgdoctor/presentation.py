@@ -79,7 +79,8 @@ def product_text(product: Product, snapshot: CatalogSnapshot, package_offset: in
     lines.append(
         f"Opakowania: {product.package_count}, nieskasowane: {product.active_package_count}"
     )
-    for package in product.packages[package_offset : package_offset + 5]:
+    packages = sorted(product.packages, key=lambda package: package.deleted)
+    for package in packages[package_offset : package_offset + 5]:
         units = "; ".join(
             " ".join(
                 filter(

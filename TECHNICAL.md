@@ -83,6 +83,8 @@ jednostek ani wartości mocy. Wielowyrazowe `q` wymaga wszystkich słów. ATC je
 prefiksem, GTIN dopasowaniem dokładnym po normalizacji, kategoria dopasowaniem
 dokładnym. GTIN i kategoria muszą dotyczyć tego samego opakowania.
 Domyślny `kind=ludzki`; pusty filtr obejmuje również pozostałe rodzaje.
+W szczegółach produktu opakowania są sortowane stabilnie: nieskasowane przed
+skasowanymi, także przy stronicowaniu. Nie ukrywamy historycznych opakowań.
 
 Aliasowanie jest funkcją wyszukiwarki, nie modyfikacją danych urzędowych ani
 stwierdzeniem klinicznej równoważności. Rozszerzając `ALIASES`, dodaj test i
@@ -108,8 +110,10 @@ w ogóle nie startuje (`require_run_settings` w `cli.py`). Parsowanie listy
 (`parse_allowed_user_ids` w `settings.py`) akceptuje wyłącznie dodatnie liczby
 całkowite i podnosi czytelny błąd konfiguracji. Użytkownik spoza listy dostaje
 tylko komunikat odmowy ze swoim identyfikatorem (aby operator mógł go dopisać);
-handler błędów również pomija takich użytkowników. Odstęp 0,7 s na użytkownika. Przetwarzanie
-aktualizacji jest sekwencyjne. Wyniki i sesje tylko w RAM, TTL 30 minut,
+handler błędów również pomija takich użytkowników. Odstęp 0,7 s na użytkownika,
+z wyjątkiem komend `/start`, `/wyczysc`, `/clear`, `/usun` i przycisków
+powrotu, resetu lub anulowania — odzyskiwanie sterowania nigdy nie czeka na limit.
+Przetwarzanie aktualizacji jest sekwencyjne. Wyniki i sesje tylko w RAM, TTL 30 minut,
 sprzątanie co 60 s, limit 5000. Usuwane są też pomocnicze cache user/chat PTB.
 Callbacki stron i produktów używają losowego nonce i indeksu; stare klawiatury
 są odrzucane. Dane callbacków mieszczą się w 64 bajtach. Tekst wyświetlany bez
@@ -145,6 +149,16 @@ parsowane defensive regexami z dekodowaniem encji; pozostałe to JSON.
 
 Przepływ użytkownika: nazwa handlowa → wybór produktu → miejscowość →
 wybór lokalizacji → lista aptek (stronicowanie z RAM, bez ponownych żądań).
+`bot.py` rozpoznaje końcową moc w zapisie `10mg` / `0,5 mg` / `1mg/ml`: do serwisu
+wysyła tylko nazwę, po czym porównuje dawkę i jednostkę z początkiem
+`dose_line`. Pierwszeństwo ma dokładna nazwa handlowa. Brak zgodnej mocy
+albo dokładnej nazwy wymaga jawnego wyboru z dostępnych wariantów; nie
+zamieniamy jednostek i nie zgadujemy równoważności produktów. Przycisk
+z karty ludzkiego leku RPL przekazuje jego nazwę i moc do tego samego
+przepływu. `/wyczysc` i `/clear` zerują filtry oraz aktywny wybór bez
+usuwania sesji; `/usun` nadal usuwa całą sesję. `/start` kończy oczekiwanie
+na dane apteczne, zachowując filtry; `/szukaj` kończy je i otwiera nowe
+wyszukiwanie bez starych filtrów.
 Kroki sieciowe klienta (odpowiednio 2, 2 i 5 żądań, każda partia we
 własnej świeżej sesji — sesja nie jest trzymana między aktualizacjami
 Telegrama):

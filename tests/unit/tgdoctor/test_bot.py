@@ -11,10 +11,19 @@ from telegram.request import HTTPXRequest
 
 from tests.conftest import LOCATIONS_PAYLOAD, OFFERS_FRAGMENT, PRODUCTS_FRAGMENT
 from tgdoctor.allowlist import Allowlist
-from tgdoctor.bot import AvailabilityFlow, Bot, BotContext, Session, keyboard, menu
+from tgdoctor.bot import (
+    AvailabilityFlow,
+    Bot,
+    BotContext,
+    Session,
+    apteka_strength_matches,
+    keyboard,
+    menu,
+    parse_apteka_query,
+)
 from tgdoctor.catalog import Catalog
 from tgdoctor.importer import Importer
-from tgdoctor.ktomalek import KtomalekClient, KtomalekProduct
+from tgdoctor.ktomalek import KtomalekClient, KtomalekError, KtomalekProduct
 from tgdoctor.models import Search
 from tgdoctor.settings import Settings
 
@@ -72,6 +81,7 @@ async def test_real_dispatch_menu_search_detail(
     populated: Catalog,
     tmp_path: Path,
     allowlist: Allowlist,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[httpx.Request] = []
 
@@ -148,12 +158,221 @@ async def test_real_dispatch_menu_search_detail(
             parse_qs(r.content.decode()) for r in calls if r.url.path.endswith("/sendMessage")
         ]
         assert any("GTIN" in body.get("text", [""])[0] for body in bodies)
+        selected: list[tuple[str, str | None]] = []
+
+        async def lookup(
+            update: Update, current: Session, name: str, strength: str | None = None
+        ) -> None:
+            selected.append((name, strength))
+
+        monkeypatch.setattr(bot, "apteka_name", lookup)
+        await click(f"apteka-detail:{session.nonce}")
+        assert selected == [("Żółć Lek Test", "0,5 mg")]
         replies_before = sum(r.url.path.endswith("/sendMessage") for r in calls)
         await click("pharmacies")
         assert sum(r.url.path.endswith("/sendMessage") for r in calls) == replies_before
         assert all(r.url.host == "api.telegram.org" for r in calls)
         await click("item:obsolete:0")
         assert "wygas" in calls[-1].content.decode()
+
+        session.last_request = 0
+        clear = Message(
+            message_id=3,
+            date=datetime.now(UTC),
+            chat=Chat(42, "private"),
+            from_user=user,
+            text="/clear",
+            entities=[MessageEntity("bot_command", 0, 6)],
+        )
+        clear.set_bot(application.bot)
+        await application.process_update(Update(4, message=clear))
+        assert session.query.q == ""
+        assert session.results == []
+        assert session.detail is None
+        assert 42 in bot.sessions
+
+        session.awaiting = "apteka-city"
+        session.apteka = AvailabilityFlow(query="Nebicard")
+        start = Message(
+            message_id=4,
+            date=datetime.now(UTC),
+            chat=Chat(42, "private"),
+            from_user=user,
+            text="/start",
+            entities=[MessageEntity("bot_command", 0, 6)],
+        )
+        start.set_bot(application.bot)
+        await application.process_update(Update(5, message=start))
+        assert session.awaiting == ""
+        assert session.apteka is None
+
+        session.awaiting = "apteka-name"
+        session.apteka = AvailabilityFlow(query="Xanax")
+        session.last_request = 0
+        search = Message(
+            message_id=5,
+            date=datetime.now(UTC),
+            chat=Chat(42, "private"),
+            from_user=user,
+            text="/szukaj apap",
+            entities=[MessageEntity("bot_command", 0, 7)],
+        )
+        search.set_bot(application.bot)
+        await application.process_update(Update(6, message=search))
+        assert session.query.q == "apap"
+        assert session.awaiting == ""
+        assert session.apteka is None
+
+
+@pytest.mark.parametrize(
+    ("value", "name", "strength"),
+    [
+        ("Nebicard 10mg", "Nebicard", "10 mg"),
+        ("Xanax SR 0,5 mg", "Xanax SR", "0,5 mg"),
+        ("Metocard 1mg/ml", "Metocard", "1 mg/ml"),
+        ("Apap", "Apap", None),
+    ],
+)
+def test_apteka_query_understands_optional_strength(
+    value: str, name: str, strength: str | None
+) -> None:
+    assert parse_apteka_query(value) == (name, strength)
+
+
+def test_apteka_strength_requires_the_same_dose_and_unit() -> None:
+    product = KtomalekProduct("1", "1", "lek", "1", "Lek", "0.5 mg | 30 tabl.", "")
+    assert apteka_strength_matches(product, "0,5 mg")
+    assert not apteka_strength_matches(product, "5 mg")
+    assert not apteka_strength_matches(product, "0,5 g")
+    solution = KtomalekProduct("2", "2", "lek", "2", "Lek", "1 mg/ml | roztwór", "")
+    assert apteka_strength_matches(solution, "1 mg/ml")
+    assert not apteka_strength_matches(solution, "1 mg")
+
+
+@pytest.mark.asyncio
+async def test_product_detail_offers_pharmacy_shortcut(
+    populated: Catalog,
+    tmp_path: Path,
+    allowlist: Allowlist,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = Bot(populated, settings(tmp_path), allowlist)
+    markups: list[InlineKeyboardMarkup] = []
+
+    async def send(update: Update, text: str, markup: InlineKeyboardMarkup | None = None) -> None:
+        if markup is not None:
+            markups.append(markup)
+
+    monkeypatch.setattr(bot, "send", send)
+    session = Session(detail=(populated.search(Search()).items[0].dataset, "001"))
+    await bot.detail(Update(1), session)
+    assert any(
+        button.callback_data == f"apteka-detail:{session.nonce}"
+        for row in markups[-1].inline_keyboard
+        for button in row
+    )
+
+
+@pytest.mark.asyncio
+async def test_apteka_name_selects_requested_strength(
+    populated: Catalog,
+    tmp_path: Path,
+    allowlist: Allowlist,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = Bot(populated, settings(tmp_path), allowlist)
+    queries: list[str] = []
+    replies: list[tuple[str, InlineKeyboardMarkup]] = []
+
+    async def products(query: str) -> list[KtomalekProduct]:
+        queries.append(query)
+        return [
+            KtomalekProduct(str(i), str(i), query, str(i), "Nebicard", dose, "")
+            for i, dose in enumerate(("5 mg | 28 tabl.", "10 mg | 28 tabl."), 1)
+        ]
+
+    async def placeholder(update: Update, text: str) -> Message | None:
+        return None
+
+    async def finish(
+        update: Update, placeholder: Message | None, text: str, markup: InlineKeyboardMarkup
+    ) -> None:
+        replies.append((text, markup))
+
+    monkeypatch.setattr(bot.ktomalek, "products", products)
+    monkeypatch.setattr(bot, "placeholder", placeholder)
+    monkeypatch.setattr(bot, "finish", finish)
+    session = Session()
+    await bot.apteka_name(Update(1), session, "Nebicard 10mg")
+    assert queries == ["Nebicard"]
+    assert session.apteka is not None
+    assert session.apteka.product is not None
+    assert session.apteka.product.dose_line.startswith("10 mg")
+    assert session.awaiting == "apteka-city"
+    assert "10 mg" in replies[-1][0]
+
+
+@pytest.mark.asyncio
+async def test_apteka_name_does_not_silently_substitute_strength(
+    populated: Catalog,
+    tmp_path: Path,
+    allowlist: Allowlist,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = Bot(populated, settings(tmp_path), allowlist)
+    replies: list[tuple[str, InlineKeyboardMarkup]] = []
+
+    async def products(query: str) -> list[KtomalekProduct]:
+        return [KtomalekProduct("1", "1", query, "1", "Nebicard", "5 mg | 28 tabl.", "")]
+
+    async def placeholder(update: Update, text: str) -> Message | None:
+        return None
+
+    async def finish(
+        update: Update, placeholder: Message | None, text: str, markup: InlineKeyboardMarkup
+    ) -> None:
+        replies.append((text, markup))
+
+    monkeypatch.setattr(bot.ktomalek, "products", products)
+    monkeypatch.setattr(bot, "placeholder", placeholder)
+    monkeypatch.setattr(bot, "finish", finish)
+    session = Session()
+    await bot.apteka_name(Update(1), session, "Nebicard 10mg")
+    assert session.apteka is not None
+    assert session.apteka.product is None
+    assert "10 mg" in replies[-1][0]
+    assert "Nie znaleziono" in replies[-1][0]
+    assert len(replies[-1][1].inline_keyboard) >= 1
+
+
+@pytest.mark.asyncio
+async def test_apteka_lookup_failure_keeps_name_prompt(
+    populated: Catalog,
+    tmp_path: Path,
+    allowlist: Allowlist,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = Bot(populated, settings(tmp_path), allowlist)
+    replies: list[str] = []
+
+    async def products(query: str) -> list[KtomalekProduct]:
+        raise KtomalekError("transport")
+
+    async def placeholder(update: Update, text: str) -> Message | None:
+        return None
+
+    async def finish(
+        update: Update, placeholder: Message | None, text: str, markup: InlineKeyboardMarkup
+    ) -> None:
+        replies.append(text)
+
+    monkeypatch.setattr(bot.ktomalek, "products", products)
+    monkeypatch.setattr(bot, "placeholder", placeholder)
+    monkeypatch.setattr(bot, "finish", finish)
+    session = Session()
+    await bot.apteka_name(Update(1), session, "Nebicard")
+    assert session.awaiting == "apteka-name"
+    assert "Podaj nazwę ponownie" in replies[-1]
 
 
 @pytest.mark.asyncio
@@ -306,6 +525,43 @@ async def test_private_chat_access_and_rate_limit(
     assert await bot.session(update) is None
     group = Message(message_id=2, date=datetime.now(UTC), chat=Chat(-42, "group"), from_user=user)
     assert await bot.session(Update(2, message=group)) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("command", ["/start", "/wyczysc", "/clear", "/usun"])
+async def test_recovery_commands_bypass_short_rate_limit(
+    command: str,
+    populated: Catalog,
+    tmp_path: Path,
+    allowlist: Allowlist,
+) -> None:
+    bot = Bot(populated, settings(tmp_path), allowlist)
+    message = Message(
+        message_id=1,
+        date=datetime.now(UTC),
+        chat=Chat(42, "private"),
+        from_user=User(42, "Test", is_bot=False),
+        text=command,
+    )
+    update = Update(1, message=message)
+    assert await bot.session(update) is not None
+    assert await bot.session(update) is not None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["home", "reset", "apteka-cancel"])
+async def test_recovery_buttons_bypass_short_rate_limit(
+    action: str,
+    populated: Catalog,
+    tmp_path: Path,
+    allowlist: Allowlist,
+) -> None:
+    bot = Bot(populated, settings(tmp_path), allowlist)
+    user = User(42, "Test", is_bot=False)
+    message = Message(message_id=1, date=datetime.now(UTC), chat=Chat(42, "private"))
+    update = Update(1, callback_query=CallbackQuery("1", user, "instance", message, data=action))
+    assert await bot.session(update) is not None
+    assert await bot.session(update) is not None
 
 
 def test_reset_defaults() -> None:

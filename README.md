@@ -7,6 +7,8 @@ katalogu wyrobów medycznych. Python 3.14, SQLite i Docker **wyłącznie linux/a
 ## Co potrafi
 
 - Interaktywne menu, szczegóły produktu, stronicowanie wyników i opakowań.
+- W szczegółach najpierw pokazuje nieskasowane opakowania, dopiero potem
+  historyczne oznaczone „SKASOWANE”.
 - Nazwa handlowa i poprzednia, substancja, nazwa powszechna, ATC/prefiks ATC,
   GTIN/EAN, postać, moc, podmiot/producent, droga podania i kategoria dostępności.
 - Wyszukiwanie bez rozróżniania wielkości liter i polskich znaków: `zolc` → `Żółć`.
@@ -29,11 +31,16 @@ opakowaniem. Status „nieskasowane” jest statusem rekordu, nie stanem magazyn
 ## Sprawdzanie dostępności w aptekach — /apteka
 
 `/apteka` sprawdza dostępność leku podanego **nazwą handlową** (np. Apap,
-Ibuprom) w aptekach w miejscowości podanej przez użytkownika — z menu
-(`Sprawdź w aptece`) lub komendą `/apteka <nazwa handlowa>`:
+Ibuprom) w aptekach w miejscowości podanej przez użytkownika — z menu,
+przycisku **Apteki (ktomalek.pl)** w szczegółach leku lub komendą
+`/apteka <nazwa handlowa> [moc]`, np. `/apteka Nebicard 10mg`:
 
-1. Bot pyta o nazwę handlową; przy wielu produktach o tej samej nazwie
-   pokazuje klawiaturę wyboru (postać/opakowanie).
+1. Bot pyta o nazwę handlową; można dopisać moc (`10mg`, `0,5 mg`, `1mg/ml`).
+   Wyszukuje samą nazwę, następnie filtruje dokładną moc i jednostkę — nie
+   zamienia `mg` na `g` ani nie wybiera po cichu innej mocy. Gdy nie ma
+   zgodnej, pokazuje dostępne warianty do świadomego wyboru albo zmiany nazwy.
+   Po wyszukaniu substancji w katalogu można przejść do aptek z karty
+   wybranego leku, bez ponownego wpisywania nazwy i mocy.
 2. Bot pyta o miasto lub miejscowość; przy wielu dopasowaniach
    pokazuje klawiaturę wyboru (etykieta z powiatem i województwem).
 3. Bot zwraca listę aptek z odległością, adresem, telefonem, godzinami
@@ -136,15 +143,20 @@ ssh homevm 'cd dev/tgdoctor && docker compose -p dev-tgdoctor down --volumes --r
 
 ## Używanie bota
 
-- `/start` — menu i filtry; zwykła wiadomość wyszukuje dowolną frazę.
-- `/szukaj alprazolam` — nowe wyszukiwanie, zerujące wcześniejsze filtry.
-- `/apteka [nazwa handlowa]` — dostępność leku w aptekach wybranej miejscowości.
+- `/start` — menu i filtry; przerywa niedokończone wybieranie leku lub miasta.
+  Zwykła wiadomość wyszukuje dowolną frazę.
+- `/szukaj alprazolam` — nowe wyszukiwanie, zerujące wcześniejsze filtry
+  i rozpoczęty przepływ apteczny.
+- `/apteka [nazwa handlowa] [moc]` — dostępność konkretnego leku w miejscowości.
+- `/wyczysc` (także `/clear`) — przywraca domyślne filtry i przerywa wybieranie,
+  zachowując dostęp użytkownika i sesję.
 - `/status` — źródła, daty, liczby rekordów i ewentualny błąd aktualizacji.
 - `/prywatnosc` — zasady przetwarzania informacji.
 - `/usun` — usuwa sesję i filtry z pamięci aplikacji, ale nie historię Telegrama.
 
 Filtry menu łączą się przez AND. Wpisanie `-` usuwa wybrany filtr.
-Przycisk **Wyczyść filtry** przywraca ustawienia domyślne. Filtr rodzaju może
+Przycisk **Wyczyść filtry** działa jak `/wyczysc`; na liście wyników są też
+skróty **Filtruj nazwę** i **Filtruj moc**. Filtr rodzaju może
 zostać zmieniony na weterynaryjny albo usunięty. Moc jest filtrem tekstowym:
 `0,5 mg` i `0.5 mg` nie są automatycznie przeliczane ani utożsamiane.
 
