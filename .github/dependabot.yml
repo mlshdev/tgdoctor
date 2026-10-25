@@ -8,6 +8,8 @@ updates:
     directory: "/"
     schedule: {interval: "cron", cronjob: "0 0 * * 1,4", timezone: "UTC"}
     groups: {images: {patterns: ["*"]}}
+    ignore:
+      - dependency-name: "astral-sh/uv"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule: {interval: "cron", cronjob: "0 0 * * 1,4", timezone: "UTC"}

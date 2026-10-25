@@ -281,18 +281,21 @@ co odświeża także mutable warstwy bazowego obrazu. Publikacja do GHCR tylko p
 PR, po walidacji; tag `v0.1.0` daje `:0.1.0`, main daje `:latest` i pełny SHA.
 W produkcji wybieraj stabilny release, nie `latest` ani digest w Compose.
 
-Dependabot: uv, Docker i GitHub Actions, grupowanie per ekosystem, wszystkie
-stabilne wersje, dwa razy w tygodniu. Osobny `update-tools.yml` sprawdza build
-backend/uv i aktualizuje lock transitive; przed otwarciem PR wykonuje testy,
+Dependabot: uv, Docker (z wyjątkiem obrazu uv) i GitHub Actions, grupowanie per
+ekosystem, wszystkie stabilne wersje, dwa razy w tygodniu. Obraz uv aktualizuje
+`update-tools.yml` razem z wymaganym numerem wersji w `pyproject.toml`, aby
+osobny PR Dockera nie rozjechał tych dwóch pinów. Workflow aktualizuje też
+backend budowania i lock zależności; przed otwarciem PR wykonuje testy,
 build, smoke, dive i Compose validation. `scripts/update_tools.py` ma tylko stdlib,
 aktualizuje `tool.uv.required-version` i etap uv w Dockerfile razem. Dive w CI
 pochodzi z aktualnego stabilnego wydania GitHub pobranego przez `gh`.
 
 PR-y Dependabota włączone są w auto-merge przez `dependabot-automerge.yml`
-(`gh pr merge --auto --merge` po `fetch-metadata`); scalenie następuje dopiero,
-gdy wymagane checki ochrony gałęzi (`validate`, `image`) są zielone — ochrona
-`main` jest włączona przez API (`strict`, `enforce_admins=false`: właściciel
-może pushować bezpośrednio). PR-y
+(`gh pr merge --auto --merge` tylko po poprawnej weryfikacji `fetch-metadata`);
+PR z dodatkowym commitem człowieka wymaga ręcznego scalenia. Auto-merge działa
+dopiero, gdy wymagane checki ochrony gałęzi (`validate`, `image`) są zielone —
+ochrona `main` jest włączona przez API (`strict`, `enforce_admins=false`:
+właściciel może pushować bezpośrednio). PR-y
 utworzone przez `GITHUB_TOKEN` (update-tools) nie wywołują kolejnych workflow,
 dlatego walidacja aktualizacji narzędzi odbywa się przed otwarciem PR — ich
 merge pozostaje ręczny. Merge do main publikuje obraz do GHCR w `validate.yml`.
