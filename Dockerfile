@@ -1,5 +1,5 @@
 FROM ghcr.io/astral-sh/uv:0.13.5 AS uv
-FROM docker.io/library/python:3.14-slim-trixie AS builder
+FROM docker.io/library/python:3.15-slim-trixie AS builder
 ARG TARGETARCH
 RUN test "${TARGETARCH}" = "amd64"
 COPY --from=uv /uv /usr/local/bin/uv
@@ -18,7 +18,7 @@ RUN uv sync --locked --no-editable --no-cache \
     && uv run --no-sync ty check src tests scripts \
     && uv run --no-sync pytest
 
-FROM docker.io/library/python:3.14-slim-trixie AS runtime
+FROM docker.io/library/python:3.15-slim-trixie AS runtime
 LABEL org.opencontainers.image.title="tgdoctor" \
       org.opencontainers.image.description="Polish registry search Telegram bot; linux/amd64 only" \
       org.opencontainers.image.version="0.1.0"
